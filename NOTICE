@@ -1,0 +1,38 @@
+NOTICE — third-party attribution
+=================================
+
+The clock coefficient files and the methylation reference distributed under
+grimage-calculator/data/ are derived from the open-source biolearn library and
+the original clock publications. They are redistributed here for research and
+educational use.
+
+biolearn
+--------
+- Project: https://bio-learn.github.io/  (https://github.com/bio-learn/biolearn)
+- License: MIT
+- Files derived from biolearn's bundled data:
+    GrimAgeV1.csv, GrimAgeV2.csv, Horvath1.csv, Hannum.csv, PhenoAge.csv,
+    sesame_450k_median.csv (subset to the CpGs used by the bundled clocks)
+
+Original clock publications
+---------------------------
+- GrimAge (V1): Lu AT, et al. "DNA methylation GrimAge strongly predicts
+  lifespan and healthspan." Aging (Albany NY), 2019. PMC6366976.
+- GrimAge V2: Lu AT, et al. Aging (Albany NY), 2022. PMC9792204.
+- Horvath multi-tissue clock: Horvath S. Genome Biology, 2013. (DOI
+  10.1186/gb-2013-14-10-r115)
+- Hannum clock: Hannum G, et al. Molecular Cell, 2013.
+- PhenoAge (Levine): Levine ME, et al. Aging (Albany NY), 2018. Article 101414.
+
+GrimAge usage restriction
+-------------------------
+GrimAge is subject to commercial-use restrictions held by UCLA TDG and licensed
+via the Clock Foundation (https://clockfoundation.org/). For cosmetics or
+life-insurance applications, or any other commercial usage, contact the Clock
+Foundation regarding licensing. This repository provides a free
+research/educational reimplementation only.
+
+Disclaimer
+----------
+This software is provided for research and educational purposes only. It is not
+a medical device and does not provide medical advice, diagnosis, or treatment.
