@@ -1,22 +1,32 @@
 # epiage-skill
 
-Agent skill(s) for computing **epigenetic aging clocks** from a DNA methylation
-beta-value file — entirely offline, with only `pandas` + `numpy`.
+An installable agent skill for computing **epigenetic / DNA-methylation aging
+clocks** from a CpG beta-value file — entirely offline, with only `pandas` +
+`numpy`.
 
-## Skills in this repo
+## Skill: `epigenetic-clocks`
 
-### `grimage-calculator`
+Computes **24 aging clocks** from a methylation beta-value CSV (e.g. an Illumina
+EPIC / 450K array export), including:
 
-Compute **GrimAge** (V1 & V2) and several other DNA-methylation aging clocks
-(**Horvath**, **Hannum**, **PhenoAge**) from a CpG beta-value CSV (e.g. an
-Illumina EPIC / 450K array export).
+- **GrimAge** V1 & V2 (2nd-gen, mortality-trained)
+- **1st-gen chronological**: Horvath (v1 & skin-blood), Hannum, Lin, Vidal-Bralo,
+  Weidner, Garagnani, Bocklandt
+- **2nd-gen biological age**: PhenoAge, HRSInCH-PhenoAge
+- **Ying 2022 causality clocks**: CausAge, DamAge, AdaptAge
+- **Stochastic clocks**: StocH, StocP, StocZ
+- **Tissue-specific**: PEDBE (pediatric buccal), Cortical (brain)
+- **Other markers**: DunedinPoAm (pace of aging), DNAmTL (telomere length),
+  Zhang (mortality), EpiTOC1 (mitotic)
 
-- **Self-contained**: depends only on `pandas` + `numpy`. No `biolearn`, no
-  `torch`, no network. Clock coefficients and the imputation reference are
-  vendored (trimmed to the ~1900 CpGs the clocks use, ~150 KB).
+Run `--list-clocks` for the full list and selectable keys.
+
+- **Self-contained**: only `pandas` + `numpy`. No `biolearn`, `torch`, or network.
+  Coefficients + imputation reference are vendored under
+  `epigenetic-clocks/data/` (~6,750 CpGs the clocks use, ~560 KB).
 - **Faithful**: the math reimplements [biolearn](https://bio-learn.github.io/)'s
-  `GrimageModel` and `LinearMethylationModel` and reproduces biolearn's outputs
-  to 4 decimal places across all five clocks.
+  `GrimageModel` and `LinearMethylationModel`, verified to reproduce biolearn's
+  outputs for all 24 clocks (agreement < 0.005, i.e. rounding only).
 
 ## Install
 
@@ -24,16 +34,16 @@ Illumina EPIC / 450K array export).
 npx skills add gangchen/epiage-skill
 ```
 
-This installs the `grimage-calculator` skill into your agent. Once installed,
-just give your agent a methylation file and ask for your GrimAge / biological age.
-
-You can also run the script directly:
+Once installed, give your agent a methylation file and ask for your GrimAge /
+biological age. You can also run the script directly:
 
 ```bash
-python3 grimage-calculator/scripts/compute_grimage.py \
+python3 epigenetic-clocks/scripts/compute_clocks.py \
   --input betas.csv --age 45 --sex m \
-  --clocks grimage horvath hannum phenoage \
-  --sensitivity 40 42 47 49
+  --clocks all                 # or: core (default), grimage, firstgen, secondgen, or specific keys
+  # --sensitivity 40 42 47 49  # optional, when exact age is uncertain
+
+python3 epigenetic-clocks/scripts/compute_clocks.py --list-clocks
 ```
 
 ## Input format
@@ -52,33 +62,42 @@ Beta values are floats in `[0, 1]`.
 
 ## Why age & sex are required for GrimAge
 
-GrimAge is a **second-generation, mortality-trained** clock. It estimates DNAm
-surrogates of 7 plasma proteins plus smoking pack-years (V2 also adds DNAm A1C &
-CRP), then combines them **with chronological age and sex** in a survival model.
-Age and sex feed the formula directly, so both are mandatory. (Horvath / Hannum /
-PhenoAge don't require them, but passing `--age` lets the tool report
-acceleration = clock − chronological age.)
+GrimAge is a **2nd-generation, mortality-trained** clock: it estimates DNAm
+surrogates of 7 plasma proteins + smoking pack-years (V2 also adds DNAm A1C & CRP),
+then combines them **with chronological age and sex** in a survival model. Both are
+mandatory for the `grimage*` clocks. The other clocks don't need them, but passing
+`--age` lets the tool report acceleration (= clock − chronological age) for the
+year-unit clocks.
 
 ## Interpreting the result — read this
 
 - **Open-source reimplementation, not an official/certified value.** Numbers track
   Horvath's official calculator closely but may differ slightly. For a citable
   number, use the Horvath DNAm Age calculator or a commercial provider.
-- **"Acceleration" here = clock − chronological age**, a simple difference. The
-  academic *GrimAgeAccel* (residual vs. a same-age cohort) needs a population
-  sample and **can't be computed for one person**. So +8 means "epigenetic-
-  predicted age is 8 years above chronological age," **not** "8 years older than
-  your peers."
-- **GrimAge is a risk score in year units**, not "your DNA looks N years old." For
-  the "guess my age" question, Horvath/Hannum are the right clocks.
+- **"Acceleration" = clock − chronological age**, a simple difference. The academic
+  *AgeAccel* (residual vs. a same-age cohort) needs a population sample and **can't
+  be computed for one person**. So +8 means "epigenetic-predicted age is 8 years
+  above chronological age," **not** "8 years older than your peers."
+- **Generations differ.** 1st-gen clocks target chronological age and land near
+  your true age; 2nd-gen (GrimAge/PhenoAge) target health outcomes and predict
+  mortality better — they can diverge from true age by design.
+- **Coverage matters.** Each clock reports CpG coverage; clocks heavily imputed on
+  a sparse input (coverage < ~90%) are less reliable for that sample.
+- **Non-year clocks** (pace, telomere kb, mortality risk, mitotic) are not ages.
 - **Not medical advice.** Research/educational use only.
+
+## Deliberately not included
+
+`DunedinPACE` (needs quantile normalization), PC-clocks / `AltumAge` / `GPAge`
+(need PCA rotation or neural nets), gestational clocks (cord blood / newborns), and
+trait/disease predictors (BMI, cholesterol, smoking, Alzheimer's, …) — the last are
+biomarker models, not aging clocks. These require the full biolearn install.
 
 ## Provenance & license
 
 - Skill code: MIT (see [LICENSE](LICENSE)).
-- Clock coefficients and the methylation reference are derived from
-  **biolearn** (MIT-licensed). See [NOTICE](NOTICE) for full attribution and the
-  original clock publications.
-- **GrimAge** has commercial-use restrictions (UCLA TDG / the Clock Foundation)
-  for cosmetics and life-insurance applications. This repo is a free
+- Clock coefficients and the methylation reference are derived from **biolearn**
+  (MIT). See [NOTICE](NOTICE) for full attribution and the original clock papers.
+- **GrimAge** has commercial-use restrictions (UCLA TDG / the Clock Foundation) for
+  cosmetics and life-insurance applications. This repo is a free
   research/educational tool; for commercial licensing contact the Clock Foundation.
