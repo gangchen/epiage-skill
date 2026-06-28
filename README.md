@@ -61,6 +61,20 @@ A CSV, auto-detected as one of:
 
 Beta values are floats in `[0, 1]`.
 
+### Where to get the raw data
+
+You need a per-CpG **methylation beta-value** file. One consumer source is
+**[WeGene (微基因)](https://www.wegene.com/)**, whose methylation product lets you
+download your raw beta values as a CpG-vs-beta CSV — exactly the **Long** format
+above (`CpG_site,Beta_value`). Export it from your WeGene account and pass it
+straight to `--input`.
+
+Any platform that outputs Illumina EPIC/450K beta values works too (e.g. an
+`idat`-derived matrix processed with `minfi`/`sesame`). Note that coverage varies
+by source: clocks needing many probes — especially `dunedinpace` (~20k background
+CpGs) — are only reliable on a fairly complete export; the tool reports per-clock
+coverage so you can tell.
+
 ## Why age & sex are required for GrimAge
 
 GrimAge is a **2nd-generation, mortality-trained** clock: it estimates DNAm
