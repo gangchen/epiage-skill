@@ -16,15 +16,16 @@ description: >-
 
 # Epigenetic Clock Calculator
 
-Computes DNA-methylation aging clocks from a beta-value file. **24 clocks** are
+Computes DNA-methylation aging clocks from a beta-value file. **25 clocks** are
 available; GrimAge is the headline one.
 
-**Self-contained.** Needs only `pandas` + `numpy` — no biolearn, torch, seaborn, or
-network. Clock coefficients and the imputation reference are vendored under `data/`
-(extracted from the open-source biolearn library, trimmed to the ~6,750 CpGs the
-clocks use, ~560 KB total). `scripts/compute_clocks.py` faithfully reimplements
-biolearn's `GrimageModel` and `LinearMethylationModel` and reproduces biolearn's
-outputs for all 24 clocks (verified to <0.005 yr, i.e. rounding only).
+**Self-contained.** Needs only `pandas` + `numpy` — no biolearn, torch, seaborn,
+scipy, or network. Clock coefficients and references are vendored under `data/`
+(extracted from the open-source biolearn library, trimmed to the CpGs the clocks
+use, ~1 MB total). `scripts/compute_clocks.py` faithfully reimplements biolearn's
+`GrimageModel`, `LinearMethylationModel`, and the DunedinPACE quantile-
+normalization (with a numpy-only `rankdata`), reproducing biolearn's outputs for
+all 25 clocks (verified to <0.005, i.e. rounding only).
 
 ## The clocks (run `--list-clocks` for the live list)
 
@@ -36,10 +37,17 @@ outputs for all 24 clocks (verified to <0.005 yr, i.e. rounding only).
 | **Ying 2022 (causality)** | `yingcausage`, `yingdamage`, `yingadaptage` | years |
 | **stochastic** | `stoch`, `stocp`, `stocz` | years |
 | **tissue-specific** | `pedbe` (pediatric buccal), `cortical` (brain) | years |
-| **other markers** | `dunedinpoam` (pace), `dnamtl` (telomere kb), `zhang` (mortality), `epitoc1` (mitotic) | varies |
+| **3rd-gen pace of aging** | `dunedinpace`, `dunedinpoam` | years/year |
+| **other markers** | `dnamtl` (telomere kb), `zhang` (mortality), `epitoc1` (mitotic) | varies |
 
 Group aliases for `--clocks`: `all`, `grimage`, `core` (default), `firstgen`,
-`secondgen`.
+`secondgen`, `thirdgen`.
+
+**`dunedinpace` needs ~20k background CpGs** for its quantile normalization (not
+just its 173 model CpGs). On a sparse input it self-imputes the missing background
+from the gold-standard reference; if its reported coverage is well below ~90% the
+result is dominated by the reference and unreliable — say so. A full EPIC/450K
+export covers it fine.
 
 ## Key facts about GrimAge (so you interpret it correctly)
 
@@ -104,7 +112,6 @@ Lead with GrimAge, then the comparison. Always convey these caveats:
 - Matrix input → one result row per sample per clock.
 - **Deliberately excluded** (can't be reproduced faithfully without heavier
   machinery, or aren't aging clocks):
-  - `DunedinPACE` — needs quantile normalization to a gold-standard distribution.
   - PC-clocks (`PCHorvath`…), `AltumAge`, `GPAge` — need PCA rotation / neural nets.
   - Gestational clocks (Knight, Lee, Mayne, Bohlin) — for cord blood / newborns.
   - Trait & disease predictors (BMI, cholesterol, smoking, alcohol, Alzheimer's,

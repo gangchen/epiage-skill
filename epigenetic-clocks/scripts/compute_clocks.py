@@ -55,6 +55,7 @@ CLOCKS = {
     "yingadaptage": dict(file="YingAdaptAge.csv", kind="linear", tf=("lin", 0.0), cat="Ying adaptation", unit="years", year=2022),
     # --- other aging-related (non-year units; no acceleration) ---
     "zhang":       dict(file="Zhang_10.csv",      kind="linear", tf=("lin", 0.0), cat="mortality risk",   unit="risk",       year=2019),
+    "dunedinpace": dict(file="DunedinPACE.csv",   kind="dunedin",                 cat="pace of aging (3rd-gen)", unit="years/year", year=2022),
     "dunedinpoam": dict(file="DunedinPoAm38.csv", kind="linear", tf=("lin", 0.0), cat="pace of aging",    unit="years/year", year=2020),
     "dnamtl":      dict(file="DNAmTL.csv",        kind="linear", tf=("lin", 0.0), cat="telomere length",  unit="kb",         year=2019),
     "epitoc1":     dict(file="EpiTOC1.csv",       kind="linear", tf=("lin", 0.0), cat="mitotic (EpiTOC)", unit="score",      year=2016),
@@ -66,11 +67,60 @@ GROUPS = {
     "core": ["grimagev1", "grimagev2", "horvath", "hannum", "phenoage"],
     "firstgen": ["horvath", "horvath2", "hannum", "lin", "vidalbralo", "weidner", "garagnani", "bocklandt"],
     "secondgen": ["grimagev1", "grimagev2", "phenoage", "hrsinchphenoage", "yingcausage", "yingdamage", "yingadaptage"],
+    "thirdgen": ["dunedinpace", "dunedinpoam"],
 }
 
 
 def anti_trafo(x, adult_age=20):
     return np.where(x < 0, (1 + adult_age) * np.exp(x) - 1, (1 + adult_age) * x + adult_age)
+
+
+# --- DunedinPACE quantile-normalization (numpy reimpl of biolearn, scipy-free) ---
+def _rankdata_avg(a):
+    """scipy.stats.rankdata(method='average'), numpy-only."""
+    a = np.asarray(a, float)
+    sorter = np.argsort(a, kind="quicksort")
+    inv = np.empty(len(a), dtype=int); inv[sorter] = np.arange(len(a))
+    s = a[sorter]
+    obs = np.r_[True, s[1:] != s[:-1]]
+    dense = obs.cumsum()[inv]
+    count = np.r_[np.flatnonzero(obs), len(a)]
+    return 0.5 * (count[dense] + count[dense - 1] + 1)
+
+
+def _qnorm_to_target(data, target):
+    """biolearn quantile_normalize_using_target (per-column, in place on a copy)."""
+    st = np.sort(target); data = np.array(data, dtype=float)
+    for col in data.T:
+        r = _rankdata_avg(col); fl = np.floor(r).astype(int); hi = (r - fl) > 0.4
+        col[hi] = 0.5 * (st[fl[hi] - 1] + st[fl[hi]])
+        col[~hi] = st[fl[~hi] - 1]
+    return data
+
+
+def _hybrid_impute(dnam, src, required, threshold=0.8):
+    """biolearn hybrid_impute: drop sparse rows, fill missing required from src (gold means)."""
+    keep = dnam[dnam.notna().mean(axis=1) >= threshold]
+    keep = keep.where(keep.notna(), keep.mean(axis=1), axis=0)
+    miss = list(set(required) - set(keep.index))
+    add = pd.DataFrame.from_dict({c: [src[c]] * dnam.shape[1] for c in miss},
+                                 orient="index", columns=dnam.columns)
+    return pd.concat([keep, add]).sort_index()
+
+
+def predict_dunedin(dnam):
+    """DunedinPACE: normalize sample to gold-standard distribution, then linear model.
+    Returns (values Series, n_background, n_background_missing)."""
+    gold = pd.read_csv(os.path.join(DATA, "DunedinPACE_Gold_Means.csv"), index_col=0)["mean"]
+    coef = pd.read_csv(os.path.join(DATA, "DunedinPACE.csv"), index_col=0)["CoefficientTraining"]
+    present = dnam.index.intersection(gold.index)
+    n_bg = len(gold); n_miss = n_bg - len(present)
+    filled = _hybrid_impute(dnam.loc[present], gold, list(gold.index))
+    target = filled.index.map(gold.to_dict()).tolist()
+    norm = pd.DataFrame(_qnorm_to_target(filled.values, target), index=filled.index, columns=filled.columns)
+    mp = [c for c in coef.index if str(c).startswith("cg") and c in norm.index]
+    vals = norm.loc[mp].multiply(coef.loc[mp], axis=0).sum(axis=0) + coef["intercept"]
+    return vals, n_bg, n_miss
 
 
 def model_cpgs(spec):
@@ -197,10 +247,16 @@ def main():
     rows = []
     for k in keys:
         spec = CLOCKS[k]
-        feats = model_cpgs(spec)
-        d2, missing = impute_missing(dnam, feats, ref)
-        cov = (len(feats) - len(missing)) / len(feats) * 100 if feats else 100.0
-        vals = predict_grim(d2, spec, args.age, sex_code) if spec["kind"] == "grim" else predict_linear(d2, spec)
+        if spec["kind"] == "dunedin":
+            # self-normalizing; coverage measured against the ~20k background probes
+            vals, n_feat, missing_n = predict_dunedin(dnam)
+            cov = (n_feat - missing_n) / n_feat * 100
+            feats = ["bg"] * n_feat; missing = ["m"] * missing_n
+        else:
+            feats = model_cpgs(spec)
+            d2, missing = impute_missing(dnam, feats, ref)
+            cov = (len(feats) - len(missing)) / len(feats) * 100 if feats else 100.0
+            vals = predict_grim(d2, spec, args.age, sex_code) if spec["kind"] == "grim" else predict_linear(d2, spec)
         for s in samples:
             v = float(vals[s])
             accel = (v - args.age) if (args.age is not None and spec["unit"] == "years") else None

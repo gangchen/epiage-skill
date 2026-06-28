@@ -6,7 +6,7 @@ clocks** from a CpG beta-value file — entirely offline, with only `pandas` +
 
 ## Skill: `epigenetic-clocks`
 
-Computes **24 aging clocks** from a methylation beta-value CSV (e.g. an Illumina
+Computes **25 aging clocks** from a methylation beta-value CSV (e.g. an Illumina
 EPIC / 450K array export), including:
 
 - **GrimAge** V1 & V2 (2nd-gen, mortality-trained)
@@ -16,17 +16,18 @@ EPIC / 450K array export), including:
 - **Ying 2022 causality clocks**: CausAge, DamAge, AdaptAge
 - **Stochastic clocks**: StocH, StocP, StocZ
 - **Tissue-specific**: PEDBE (pediatric buccal), Cortical (brain)
-- **Other markers**: DunedinPoAm (pace of aging), DNAmTL (telomere length),
-  Zhang (mortality), EpiTOC1 (mitotic)
+- **3rd-gen pace of aging**: DunedinPACE, DunedinPoAm
+- **Other markers**: DNAmTL (telomere length), Zhang (mortality), EpiTOC1 (mitotic)
 
 Run `--list-clocks` for the full list and selectable keys.
 
-- **Self-contained**: only `pandas` + `numpy`. No `biolearn`, `torch`, or network.
-  Coefficients + imputation reference are vendored under
-  `epigenetic-clocks/data/` (~6,750 CpGs the clocks use, ~560 KB).
+- **Self-contained**: only `pandas` + `numpy`. No `biolearn`, `torch`, `scipy`, or
+  network. Coefficients + references are vendored under `epigenetic-clocks/data/`
+  (~1 MB; includes DunedinPACE's 20k-probe normalization reference).
 - **Faithful**: the math reimplements [biolearn](https://bio-learn.github.io/)'s
-  `GrimageModel` and `LinearMethylationModel`, verified to reproduce biolearn's
-  outputs for all 24 clocks (agreement < 0.005, i.e. rounding only).
+  `GrimageModel`, `LinearMethylationModel`, and the DunedinPACE quantile
+  normalization (with a numpy-only `rankdata`), verified to reproduce biolearn's
+  outputs for all 25 clocks (agreement < 0.005, i.e. rounding only).
 
 ## Install
 
@@ -86,12 +87,17 @@ year-unit clocks.
 - **Non-year clocks** (pace, telomere kb, mortality risk, mitotic) are not ages.
 - **Not medical advice.** Research/educational use only.
 
+> **DunedinPACE note:** its quantile normalization needs ~20k background CpGs (not
+> just its 173 model CpGs). On a sparse input it self-imputes the rest from the
+> gold-standard reference; if the reported coverage is well below ~90% the result
+> is unreliable. A full EPIC/450K export covers it fine.
+
 ## Deliberately not included
 
-`DunedinPACE` (needs quantile normalization), PC-clocks / `AltumAge` / `GPAge`
-(need PCA rotation or neural nets), gestational clocks (cord blood / newborns), and
-trait/disease predictors (BMI, cholesterol, smoking, Alzheimer's, …) — the last are
-biomarker models, not aging clocks. These require the full biolearn install.
+PC-clocks / `AltumAge` / `GPAge` (need PCA rotation or neural nets), gestational
+clocks (cord blood / newborns), and trait/disease predictors (BMI, cholesterol,
+smoking, Alzheimer's, …) — the last are biomarker models, not aging clocks. These
+require the full biolearn install.
 
 ## Provenance & license
 
