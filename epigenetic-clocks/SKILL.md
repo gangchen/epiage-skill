@@ -105,7 +105,18 @@ Lead with GrimAge, then the comparison. Always convey these caveats:
 - **Non-year clocks** (`dunedinpoam` pace, `dnamtl` telomere kb, `zhang`/`stocz`
   mortality risk, `epitoc1` mitotic) are not ages — no acceleration is shown.
 - **Coverage / imputation**: a few missing clock CpGs filled from a population
-  median is normal; flag clocks whose coverage drops below ~90%.
+  median is normal; flag clocks whose coverage drops below ~90%. The output's
+  `n_lowconf` column counts imputed CpGs whose blood-reference SD > 0.08 (fills to
+  distrust) — a per-CpG signal sharper than coverage alone. A clock with many
+  `n_lowconf` fills is unreliable on this sample even if it "ran".
+- **Imputation reference (mLiftOver-style)**: missing CpGs are filled from a
+  whole-blood per-CpG median (better for blood than a global median), and the
+  blood SD drives `n_lowconf`. If `data/blood_reference_450k.csv` is absent the
+  tool falls back to the bundled global sesame median (and `n_lowconf` is blank).
+  Generate the blood reference once with `scripts/build_blood_reference.py`
+  (downloads GSE40279, ~1.24 GB). Empirically the blood vs global median swap
+  moves high-coverage clocks (GrimAge/Horvath/PhenoAge) by <0.2 yr — its real
+  value is the confidence flag and the heavily-imputed clocks.
 - **Not medical advice** — research/educational use only.
 
 ## Notes

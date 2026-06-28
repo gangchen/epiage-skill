@@ -144,14 +144,40 @@ def load_betas(path):
     return df.apply(pd.to_numeric, errors="coerce")
 
 
-def impute_missing(dnam, feats, ref):
-    """Add missing clock features as rows filled from the population reference."""
+SD_THRESH = 0.08  # mLiftOver-style: a CpG whose population SD exceeds this is
+                  # intrinsically variable, so imputing it from a median is unreliable.
+
+
+def load_reference():
+    """Imputation reference: whole-blood per-CpG median + SD (GSE40279, 656 blood
+    samples), falling back to the tissue-agnostic sesame median for any CpG the
+    blood panel lacks. Returns (median Series, sd Series). The blood median is a
+    better guess for a blood sample than a global median; the SD drives the
+    confidence flag on imputed values."""
+    sesame = pd.read_csv(os.path.join(DATA, "sesame_450k_median.csv"), index_col=0).iloc[:, 0]
+    bpath = os.path.join(DATA, "blood_reference_450k.csv")
+    if not os.path.exists(bpath):
+        return sesame, None  # graceful fallback to legacy global-median behaviour
+    blood = pd.read_csv(bpath, index_col=0)
+    ref_med = blood["median"].combine_first(sesame)  # blood preferred, sesame fallback
+    return ref_med, blood["sd"]
+
+
+def impute_missing(dnam, feats, ref_med, ref_sd=None):
+    """Add missing clock features as rows filled from the (blood) reference median.
+    Returns (filled_df, missing_list, n_lowconf) where n_lowconf counts imputed
+    CpGs whose reference SD > SD_THRESH (or is unknown) — i.e. fills to distrust."""
     missing = list(dict.fromkeys(c for c in feats if c not in dnam.index))
-    in_ref = [c for c in missing if c in ref.index]
+    in_ref = [c for c in missing if c in ref_med.index]
+    if ref_sd is not None:
+        n_lowconf = sum(1 for c in missing
+                        if (c not in ref_sd.index) or pd.isna(ref_sd.get(c)) or ref_sd[c] > SD_THRESH)
+    else:
+        n_lowconf = 0
     if not in_ref:
-        return dnam, missing
-    add = pd.DataFrame({s: ref.reindex(in_ref) for s in dnam.columns}, index=in_ref)
-    return pd.concat([dnam, add]), missing
+        return dnam, missing, n_lowconf
+    add = pd.DataFrame({s: ref_med.reindex(in_ref) for s in dnam.columns}, index=in_ref)
+    return pd.concat([dnam, add]), missing, n_lowconf
 
 
 def predict_linear(dnam, spec):
@@ -237,7 +263,7 @@ def main():
         sex_code = 0 if args.sex in ("f", "female") else 1
 
     dnam = load_betas(args.input)
-    ref = pd.read_csv(os.path.join(DATA, "sesame_450k_median.csv"), index_col=0).iloc[:, 0]
+    ref_med, ref_sd = load_reference()
     samples = list(dnam.columns)
     print(f"Loaded {dnam.shape[0]} CpGs x {dnam.shape[1]} sample(s) from {args.input}")
     if args.age is not None:
@@ -252,9 +278,10 @@ def main():
             vals, n_feat, missing_n = predict_dunedin(dnam)
             cov = (n_feat - missing_n) / n_feat * 100
             feats = ["bg"] * n_feat; missing = ["m"] * missing_n
+            n_lowconf = ""
         else:
             feats = model_cpgs(spec)
-            d2, missing = impute_missing(dnam, feats, ref)
+            d2, missing, n_lowconf = impute_missing(dnam, feats, ref_med, ref_sd)
             cov = (len(feats) - len(missing)) / len(feats) * 100 if feats else 100.0
             vals = predict_grim(d2, spec, args.age, sex_code) if spec["kind"] == "grim" else predict_linear(d2, spec)
         for s in samples:
@@ -262,7 +289,8 @@ def main():
             accel = (v - args.age) if (args.age is not None and spec["unit"] == "years") else None
             rows.append(dict(sample=s, clock=k, category=spec["cat"], unit=spec["unit"],
                              value=round(v, 2), accel=("" if accel is None else round(accel, 2)),
-                             coverage=f"{cov:.0f}%", n_feat=len(feats), n_imputed=len(missing)))
+                             coverage=f"{cov:.0f}%", n_feat=len(feats), n_imputed=len(missing),
+                             n_lowconf=n_lowconf))
 
     res = pd.DataFrame(rows)
     print("=== Results ===")
@@ -271,7 +299,7 @@ def main():
 
     if args.sensitivity is not None and "grimagev2" in keys:
         spec = CLOCKS["grimagev2"]
-        d2, _ = impute_missing(dnam, model_cpgs(spec), ref)
+        d2, _, _ = impute_missing(dnam, model_cpgs(spec), ref_med, ref_sd)
         print("\n=== GrimAgeV2 sensitivity to chronological age (sample 1) ===")
         for a in sorted(set([args.age] + list(args.sensitivity))):
             v = float(predict_grim(d2, spec, a, sex_code)[samples[0]])
