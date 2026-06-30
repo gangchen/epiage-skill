@@ -87,16 +87,18 @@ missing CpG from your *observed* CpGs using the inter-CpG correlation structure 
 whole-blood reference (~30% lower error than a flat median when tissue matches). The
 `n_lowconf` column flags fills whose blood SD > 0.08 (distrust those).
 
-The blood panel (`data/blood_panel.npz`) is **not bundled** — it needs a ~1.24 GB
-blood dataset to build. Generate it once:
+The blood panel (`data/blood_panel.npz`, ~5 MB) **is bundled** — prebuilt from
+GSE40279 (656 whole-blood 450K samples), reduced to the clock CpGs + 50 blood PCs +
+per-CpG median/SD. So methyLImp is active out of the box; on a held-out-CpG benchmark
+it cuts imputation RMSE ~10% vs a flat median. To rebuild/customize:
 
 ```bash
 python3 epigenetic-clocks/scripts/build_blood_panel.py   # GSE40279, 656 blood samples
 ```
 
-Until then the tool falls back to global-median imputation and prints which mode is
-active. Note: methyLImp mainly helps the heavily-imputed clocks; high-coverage clocks
-(GrimAge/Horvath/PhenoAge) move <0.2 yr either way.
+If the panel is ever missing the tool falls back to global-median and prints the
+active mode. Note: methyLImp mainly helps the heavily-imputed clocks; high-coverage
+clocks (GrimAge/Horvath/PhenoAge) move <0.2 yr either way.
 
 ## Why age & sex are required for GrimAge
 

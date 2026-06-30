@@ -120,11 +120,12 @@ Lead with GrimAge, then the comparison. Always convey these caveats:
   — more accurate than a flat median (~30% lower RMSE when tissue matches). CpGs
   the panel lacks fall back to the blood median; `n_lowconf` (blood SD>0.08) flags
   unreliable fills. The active mode is printed at run start.
-  - The panel lives in `data/blood_panel.npz`. **It is not bundled** (the build
-    needs a ~1.24 GB blood dataset). Build it once with
-    `scripts/build_blood_panel.py` (GSE40279, 656 whole-blood 450K samples); the
-    skill auto-detects and switches to methyLImp. Until then it degrades
-    gracefully to global-median imputation and says so.
+  - The panel lives in `data/blood_panel.npz` and **is bundled** (~5 MB; prebuilt
+    from GSE40279 = 656 whole-blood 450K samples, reduced to the clock CpGs + 50
+    blood PCs + per-CpG median/SD). So methyLImp is active out of the box — it
+    cuts imputation RMSE ~10% vs a flat median on a held-out-CpG benchmark. To
+    rebuild/customize, run `scripts/build_blood_panel.py`. If the
+    file is ever missing the tool degrades gracefully to global-median and says so.
   - Reality check: methyLImp mainly improves the *heavily-imputed* clocks. High-
     coverage clocks (GrimAge/Horvath/PhenoAge) impute few CpGs, so their values
     move <0.2 yr regardless — the confidence flag is the bigger practical win.
