@@ -4,6 +4,27 @@ An installable agent skill for computing **epigenetic / DNA-methylation aging
 clocks** from a CpG beta-value file — entirely offline, with only `pandas` +
 `numpy`.
 
+```bash
+npx skills add gangchen/epiage-skill
+```
+
+## At a glance
+
+- **25 aging clocks** in one run — GrimAge V1/V2, Horvath ×2, Hannum, PhenoAge,
+  Ying causality clocks, DunedinPACE/PoAm, DNAmTL, and more.
+- **For human whole blood** — give it a blood methylation export (WeGene / EPIC /
+  450K / MSA) plus age + sex, get every clock with acceleration and a per-clock
+  reliability flag.
+- **Self-contained & offline** — only `pandas` + `numpy`. Coefficients, the
+  DunedinPACE normalization reference, and a whole-blood methyLImp panel are all
+  vendored (~6 MB). No biolearn / torch / scipy / network at runtime.
+- **Faithful** — reimplements biolearn's clocks, verified to match to <0.005.
+- **Smart imputation** — missing CpGs (common on the newer MSA chip) are filled by
+  default with **methyLImp** (correlation-based, ~10% lower error than a median on
+  a held-out blood benchmark), with a confidence flag on each fill.
+
+Then just hand your agent a methylation file and ask for your biological age.
+
 ## Skill: `epigenetic-clocks`
 
 > **For human whole-blood samples.** The clocks and the imputation reference are
