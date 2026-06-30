@@ -144,39 +144,76 @@ def load_betas(path):
     return df.apply(pd.to_numeric, errors="coerce")
 
 
-SD_THRESH = 0.08  # mLiftOver-style: a CpG whose population SD exceeds this is
-                  # intrinsically variable, so imputing it from a median is unreliable.
+SD_THRESH = 0.08  # a CpG whose whole-blood SD exceeds this is intrinsically
+                  # variable, so imputing it from a reference is unreliable.
 
 
-def load_reference():
-    """Imputation reference: whole-blood per-CpG median + SD (GSE40279, 656 blood
-    samples), falling back to the tissue-agnostic sesame median for any CpG the
-    blood panel lacks. Returns (median Series, sd Series). The blood median is a
-    better guess for a blood sample than a global median; the SD drives the
-    confidence flag on imputed values."""
-    sesame = pd.read_csv(os.path.join(DATA, "sesame_450k_median.csv"), index_col=0).iloc[:, 0]
-    bpath = os.path.join(DATA, "blood_reference_450k.csv")
-    if not os.path.exists(bpath):
-        return sesame, None  # graceful fallback to legacy global-median behaviour
-    blood = pd.read_csv(bpath, index_col=0)
-    ref_med = blood["median"].combine_first(sesame)  # blood preferred, sesame fallback
-    return ref_med, blood["sd"]
+class ImputeRef:
+    """Imputation backend for missing CpGs. THIS SKILL IS DESIGNED FOR HUMAN WHOLE
+    BLOOD. Missing clock CpGs (e.g. EPIC-trained CpGs absent on an MSA export) are
+    imputed by default with **methyLImp** — reduced-rank (PCA) regression that
+    predicts a missing CpG from the sample's observed CpGs using the inter-CpG
+    correlation structure of a whole-blood reference panel. CpGs the panel lacks
+    fall back to the blood median. With no panel installed it degrades gracefully
+    to blood-median, then global sesame median.
+
+    Install the blood panel once with scripts/build_blood_panel.py (writes
+    data/blood_panel.npz from GSE40279, 656 whole-blood 450K samples)."""
+
+    def __init__(self):
+        self.median = pd.read_csv(os.path.join(DATA, "sesame_450k_median.csv"), index_col=0).iloc[:, 0]
+        self.sd = None
+        self.mu = self.V = None
+        self.cidx = {}
+        self.mode = "global-median"
+        npz = os.path.join(DATA, "blood_panel.npz")
+        csv = os.path.join(DATA, "blood_reference_450k.csv")
+        if os.path.exists(npz):
+            d = np.load(npz, allow_pickle=True)
+            cpgs = [str(c) for c in d["cpgs"]]
+            self.cidx = {c: i for i, c in enumerate(cpgs)}
+            self.mu, self.V = d["mu"], d["V"]
+            self.median = pd.Series(d["median"], index=cpgs).combine_first(self.median)
+            self.sd = pd.Series(d["sd"], index=cpgs)
+            self.mode = "methylimp" if getattr(self.V, "size", 0) else "blood-median"
+        elif os.path.exists(csv):
+            blood = pd.read_csv(csv, index_col=0)
+            self.median = blood["median"].combine_first(self.median)
+            self.sd = blood["sd"]
+            self.mode = "blood-median"
+
+    def _methylimp(self, sample, targets):
+        """methyLImp: predict panel CpGs in `targets` for one sample (a Series of
+        its observed betas) via reduced-rank projection onto the blood PCA basis."""
+        obs = [c for c in sample.index if c in self.cidx]
+        tgt = [c for c in targets if c in self.cidx]
+        if not tgt or len(obs) <= self.V.shape[0]:
+            return {}
+        oidx = [self.cidx[c] for c in obs]
+        o = sample.loc[obs].to_numpy(float) - self.mu[oidx]
+        z, *_ = np.linalg.lstsq(self.V[:, oidx].T, o, rcond=None)   # blood PC scores
+        tidx = [self.cidx[c] for c in tgt]
+        pred = self.mu[tidx] + z @ self.V[:, tidx]
+        return dict(zip(tgt, np.clip(pred, 0.0, 1.0)))
 
 
-def impute_missing(dnam, feats, ref_med, ref_sd=None):
-    """Add missing clock features as rows filled from the (blood) reference median.
-    Returns (filled_df, missing_list, n_lowconf) where n_lowconf counts imputed
-    CpGs whose reference SD > SD_THRESH (or is unknown) — i.e. fills to distrust."""
+def impute_missing(dnam, feats, ref):
+    """Fill missing clock CpGs (methyLImp by default, else median). Returns
+    (filled_df, missing_list, n_lowconf); n_lowconf = imputed CpGs whose blood SD
+    exceeds SD_THRESH (or is unknown) — fills to distrust."""
     missing = list(dict.fromkeys(c for c in feats if c not in dnam.index))
-    in_ref = [c for c in missing if c in ref_med.index]
-    if ref_sd is not None:
+    if ref.sd is not None:
         n_lowconf = sum(1 for c in missing
-                        if (c not in ref_sd.index) or pd.isna(ref_sd.get(c)) or ref_sd[c] > SD_THRESH)
+                        if (c not in ref.sd.index) or pd.isna(ref.sd.get(c)) or ref.sd[c] > SD_THRESH)
     else:
         n_lowconf = 0
-    if not in_ref:
+    if not missing:
         return dnam, missing, n_lowconf
-    add = pd.DataFrame({s: ref_med.reindex(in_ref) for s in dnam.columns}, index=in_ref)
+    add = pd.DataFrame(index=missing, columns=dnam.columns, dtype=float)
+    for s in dnam.columns:
+        filled = ref._methylimp(dnam[s].dropna(), missing) if ref.mode == "methylimp" else {}
+        add[s] = [filled.get(c, ref.median.get(c, np.nan)) for c in missing]
+    add = add.dropna(how="all")
     return pd.concat([dnam, add]), missing, n_lowconf
 
 
@@ -263,11 +300,14 @@ def main():
         sex_code = 0 if args.sex in ("f", "female") else 1
 
     dnam = load_betas(args.input)
-    ref_med, ref_sd = load_reference()
+    ref = ImputeRef()
     samples = list(dnam.columns)
     print(f"Loaded {dnam.shape[0]} CpGs x {dnam.shape[1]} sample(s) from {args.input}")
     if args.age is not None:
         print(f"Inputs: age={args.age}" + (f", sex={args.sex}" if args.sex else ""))
+    _mode = {"methylimp": "methyLImp (blood panel)", "blood-median": "blood median",
+             "global-median": "global median (no blood panel installed — see build_blood_panel.py)"}[ref.mode]
+    print(f"Tissue: whole blood | imputation of missing CpGs: {_mode}")
     print()
 
     rows = []
@@ -281,7 +321,7 @@ def main():
             n_lowconf = ""
         else:
             feats = model_cpgs(spec)
-            d2, missing, n_lowconf = impute_missing(dnam, feats, ref_med, ref_sd)
+            d2, missing, n_lowconf = impute_missing(dnam, feats, ref)
             cov = (len(feats) - len(missing)) / len(feats) * 100 if feats else 100.0
             vals = predict_grim(d2, spec, args.age, sex_code) if spec["kind"] == "grim" else predict_linear(d2, spec)
         for s in samples:
@@ -299,7 +339,7 @@ def main():
 
     if args.sensitivity is not None and "grimagev2" in keys:
         spec = CLOCKS["grimagev2"]
-        d2, _, _ = impute_missing(dnam, model_cpgs(spec), ref_med, ref_sd)
+        d2, _, _ = impute_missing(dnam, model_cpgs(spec), ref)
         print("\n=== GrimAgeV2 sensitivity to chronological age (sample 1) ===")
         for a in sorted(set([args.age] + list(args.sensitivity))):
             v = float(predict_grim(d2, spec, a, sex_code)[samples[0]])

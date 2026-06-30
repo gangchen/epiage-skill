@@ -11,7 +11,9 @@ description: >-
   their DNA "looks" — even if they just drop a methylation file and ask "how old am
   I biologically". Also triggers on "GrimAge", "Horvath clock", "PhenoAge",
   "DunedinPACE/PoAm", "epigenetic clock", or comparing several aging clocks on one
-  sample.
+  sample. Designed for human WHOLE BLOOD samples (e.g. WeGene/EPIC/450K/MSA blood
+  exports); missing CpGs are imputed by default with methyLImp using a whole-blood
+  reference panel.
 ---
 
 # Epigenetic Clock Calculator
@@ -109,14 +111,23 @@ Lead with GrimAge, then the comparison. Always convey these caveats:
   `n_lowconf` column counts imputed CpGs whose blood-reference SD > 0.08 (fills to
   distrust) — a per-CpG signal sharper than coverage alone. A clock with many
   `n_lowconf` fills is unreliable on this sample even if it "ran".
-- **Imputation reference (mLiftOver-style)**: missing CpGs are filled from a
-  whole-blood per-CpG median (better for blood than a global median), and the
-  blood SD drives `n_lowconf`. If `data/blood_reference_450k.csv` is absent the
-  tool falls back to the bundled global sesame median (and `n_lowconf` is blank).
-  Generate the blood reference once with `scripts/build_blood_reference.py`
-  (downloads GSE40279, ~1.24 GB). Empirically the blood vs global median swap
-  moves high-coverage clocks (GrimAge/Horvath/PhenoAge) by <0.2 yr — its real
-  value is the confidence flag and the heavily-imputed clocks.
+- **Blood-only design.** This skill assumes human WHOLE BLOOD. Clocks are applied
+  on blood; the imputation reference is blood. Do not use it on other tissues.
+- **Imputation of missing CpGs — methyLImp by default.** Missing clock CpGs (e.g.
+  EPIC-trained CpGs absent on an MSA/WeGene export) are imputed with **methyLImp**:
+  reduced-rank (PCA) regression that predicts each missing CpG from the sample's
+  *observed* CpGs using the inter-CpG correlation structure of a whole-blood panel
+  — more accurate than a flat median (~30% lower RMSE when tissue matches). CpGs
+  the panel lacks fall back to the blood median; `n_lowconf` (blood SD>0.08) flags
+  unreliable fills. The active mode is printed at run start.
+  - The panel lives in `data/blood_panel.npz`. **It is not bundled** (the build
+    needs a ~1.24 GB blood dataset). Build it once with
+    `scripts/build_blood_panel.py` (GSE40279, 656 whole-blood 450K samples); the
+    skill auto-detects and switches to methyLImp. Until then it degrades
+    gracefully to global-median imputation and says so.
+  - Reality check: methyLImp mainly improves the *heavily-imputed* clocks. High-
+    coverage clocks (GrimAge/Horvath/PhenoAge) impute few CpGs, so their values
+    move <0.2 yr regardless — the confidence flag is the bigger practical win.
 - **Not medical advice** — research/educational use only.
 
 ## Notes

@@ -6,6 +6,10 @@ clocks** from a CpG beta-value file — entirely offline, with only `pandas` +
 
 ## Skill: `epigenetic-clocks`
 
+> **For human whole-blood samples.** The clocks and the imputation reference are
+> blood-based — designed for blood methylation exports (WeGene / EPIC / 450K /
+> MSA). Don't use it on other tissues.
+
 Computes **25 aging clocks** from a methylation beta-value CSV (e.g. an Illumina
 EPIC / 450K array export), including:
 
@@ -74,6 +78,25 @@ Any platform that outputs Illumina EPIC/450K beta values works too (e.g. an
 by source: clocks needing many probes — especially `dunedinpace` (~20k background
 CpGs) — are only reliable on a fairly complete export; the tool reports per-clock
 coverage so you can tell.
+
+### Imputing missing CpGs (methyLImp, blood)
+
+Newer arrays like the **MSA** chip drop many EPIC-trained clock CpGs. By default the
+tool imputes them with **methyLImp** — reduced-rank (PCA) regression that predicts a
+missing CpG from your *observed* CpGs using the inter-CpG correlation structure of a
+whole-blood reference (~30% lower error than a flat median when tissue matches). The
+`n_lowconf` column flags fills whose blood SD > 0.08 (distrust those).
+
+The blood panel (`data/blood_panel.npz`) is **not bundled** — it needs a ~1.24 GB
+blood dataset to build. Generate it once:
+
+```bash
+python3 epigenetic-clocks/scripts/build_blood_panel.py   # GSE40279, 656 blood samples
+```
+
+Until then the tool falls back to global-median imputation and prints which mode is
+active. Note: methyLImp mainly helps the heavily-imputed clocks; high-coverage clocks
+(GrimAge/Horvath/PhenoAge) move <0.2 yr either way.
 
 ## Why age & sex are required for GrimAge
 
