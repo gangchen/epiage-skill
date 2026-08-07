@@ -10,8 +10,10 @@ npx skills add gangchen/epiage-skill
 
 ## At a glance
 
-- **25 aging clocks** in one run — GrimAge V1/V2, Horvath ×2, Hannum, PhenoAge,
-  Ying causality clocks, DunedinPACE/PoAm, DNAmTL, and more.
+- **37 methylation models** in one run — 25 aging clocks (GrimAge V1/V2, Horvath ×2,
+  Hannum, PhenoAge, Ying causality clocks, DunedinPACE/PoAm, DNAmTL, …) plus 12
+  exposome & health predictors (DNAm smoking, alcohol, BMI, body fat, cholesterol,
+  education, and CHD / Alzheimer's / depression risk scores).
 - **For human whole blood** — give it a blood methylation export (WeGene / EPIC /
   450K / MSA) plus age + sex, get every clock with acceleration and a per-clock
   reliability flag.
@@ -44,7 +46,16 @@ EPIC / 450K array export), including:
 - **3rd-gen pace of aging**: DunedinPACE, DunedinPoAm
 - **Other markers**: DNAmTL (telomere length), Zhang (mortality), EpiTOC1 (mitotic)
 
-Run `--list-clocks` for the full list and selectable keys.
+Plus **12 exposome & health predictors** (methylation *scores*, not aging clocks):
+
+- **exposome / lifestyle** (McCartney 2018 / Reed): smoking, alcohol, BMI (×2), body
+  fat, HDL / LDL / total cholesterol, education
+- **health / disease risk**: coronary heart disease, Alzheimer's, depression
+
+Run `--list-clocks` for the full list. Group aliases for `--clocks`: `all`, `aging`,
+`core` (default), `grimage`, `firstgen`, `secondgen`, `thirdgen`, `exposome`,
+`health`, `phenotypes`. These predictors are relative DNAm scores (many sigmoid-
+squashed to [0,1]) — **not** your actual BMI/cholesterol or a diagnosis.
 
 - **Self-contained**: only `pandas` + `numpy`. No `biolearn`, `torch`, `scipy`, or
   network. Coefficients + references are vendored under `epigenetic-clocks/data/`

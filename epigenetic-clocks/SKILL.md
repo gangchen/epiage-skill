@@ -1,19 +1,21 @@
 ---
 name: epigenetic-clocks
 description: >-
-  Compute epigenetic / DNA-methylation aging clocks — GrimAge (V1 & V2), Horvath
-  (v1 & skin-blood), Hannum, PhenoAge, the Ying causality clocks, DunedinPoAm pace
-  of aging, DNAmTL telomere length, and ~24 clocks total — from a DNA methylation
-  beta-value file. Use this whenever the user provides methylation array data (a
-  CSV/TSV of CpG sites with beta values, e.g. from an Illumina EPIC/450K array) and
-  wants their biological age, epigenetic age, GrimAge, DNAm age, age acceleration,
-  pace of aging, "甲基化年龄", "生物年龄", "表观遗传时钟", "衰老时钟", or how old
-  their DNA "looks" — even if they just drop a methylation file and ask "how old am
-  I biologically". Also triggers on "GrimAge", "Horvath clock", "PhenoAge",
-  "DunedinPACE/PoAm", "epigenetic clock", or comparing several aging clocks on one
-  sample. Designed for human WHOLE BLOOD samples (e.g. WeGene/EPIC/450K/MSA blood
-  exports); missing CpGs are imputed by default with methyLImp using a whole-blood
-  reference panel.
+  Compute 37 DNA-methylation health models from a blood methylation file — 25 aging
+  clocks (GrimAge V1/V2, Horvath ×2, Hannum, PhenoAge, Ying causality clocks,
+  DunedinPACE/PoAm pace of aging, DNAmTL telomere length, …) PLUS 12 exposome &
+  health predictors (DNAm smoking, alcohol, BMI, body fat, cholesterol, education,
+  and coronary-heart-disease / Alzheimer's / depression risk). Use whenever the
+  user provides methylation array data (a CSV/TSV of CpG beta values, e.g. an
+  Illumina EPIC/450K/MSA export) and wants their biological age, epigenetic age,
+  GrimAge, DNAm age, age acceleration, pace of aging, an epigenetic smoking/BMI/
+  lifestyle score, a methylation disease-risk score, "甲基化年龄", "生物年龄",
+  "表观遗传时钟", "衰老时钟", "暴露组", or how old their DNA "looks" — even if they
+  just drop a methylation file and ask "how old am I biologically". Also triggers on
+  "GrimAge", "Horvath clock", "PhenoAge", "DunedinPACE/PoAm", "epigenetic clock",
+  "exposome", "methylation risk score", or comparing several clocks on one sample.
+  Designed for human WHOLE BLOOD samples (e.g. WeGene/EPIC/450K/MSA blood exports);
+  missing CpGs are imputed by default with methyLImp using a whole-blood panel.
 ---
 
 # Epigenetic Clock Calculator
@@ -27,9 +29,12 @@ scipy, or network. Clock coefficients and references are vendored under `data/`
 use, ~1 MB total). `scripts/compute_clocks.py` faithfully reimplements biolearn's
 `GrimageModel`, `LinearMethylationModel`, and the DunedinPACE quantile-
 normalization (with a numpy-only `rankdata`), reproducing biolearn's outputs for
-all 25 clocks (verified to <0.005, i.e. rounding only).
+all 37 models — 25 aging clocks + 12 exposome/health predictors — verified bit-exact
+against biolearn.
 
-## The clocks (run `--list-clocks` for the live list)
+## The models (run `--list-clocks` for the live list)
+
+**Aging clocks (25):**
 
 | family | clocks | unit |
 |---|---|---|
@@ -42,8 +47,17 @@ all 25 clocks (verified to <0.005, i.e. rounding only).
 | **3rd-gen pace of aging** | `dunedinpace`, `dunedinpoam` | years/year |
 | **other markers** | `dnamtl` (telomere kb), `zhang` (mortality), `epitoc1` (mitotic) | varies |
 
-Group aliases for `--clocks`: `all`, `grimage`, `core` (default), `firstgen`,
-`secondgen`, `thirdgen`.
+**Exposome / lifestyle & health predictors (12)** — methylation *scores*, not aging
+clocks (McCartney 2018 / Reed / disease EWAS):
+
+| group | models | unit |
+|---|---|---|
+| **exposome** | `smoking`, `alcohol`, `bmi`, `bmi_reed`, `bodyfat`, `hdl`, `ldl`, `totalchol`, `education` | score |
+| **health** | `cvd` (coronary heart disease), `alzheimers`, `depression` | risk |
+
+Group aliases for `--clocks`: `all` (everything), `aging` (25 clocks), `grimage`,
+`core` (default), `firstgen`, `secondgen`, `thirdgen`, `exposome`, `health`,
+`phenotypes` (exposome+health).
 
 **`dunedinpace` needs ~20k background CpGs** for its quantile normalization (not
 just its 173 model CpGs). On a sparse input it self-imputes the missing background
@@ -106,6 +120,12 @@ Lead with GrimAge, then the comparison. Always convey these caveats:
   design. Don't read GrimAge as "looks N years old"; it's a risk score in years.
 - **Non-year clocks** (`dunedinpoam` pace, `dnamtl` telomere kb, `zhang`/`stocz`
   mortality risk, `epitoc1` mitotic) are not ages — no acceleration is shown.
+- **Exposome / health predictors are methylation *scores*, not clinical values.**
+  `bmi`/`hdl`/`smoking`/`cvd`/etc. output a DNAm-predicted score/risk (many via a
+  sigmoid, so in [0,1]) — NOT your actual BMI, cholesterol, or a diagnosis. Read
+  them as relative epigenetic signals, and only where coverage is high — several
+  (`education`, `ldl`, `cvd`, `alzheimers`, `depression`) have low coverage on
+  sparse MSA data, so distrust those. Never present them as a medical result.
 - **Coverage / imputation**: a few missing clock CpGs filled from a population
   median is normal; flag clocks whose coverage drops below ~90%. The output's
   `n_lowconf` column counts imputed CpGs whose blood-reference SD > 0.08 (fills to

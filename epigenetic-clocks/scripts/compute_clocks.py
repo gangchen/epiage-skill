@@ -59,15 +59,38 @@ CLOCKS = {
     "dunedinpoam": dict(file="DunedinPoAm38.csv", kind="linear", tf=("lin", 0.0), cat="pace of aging",    unit="years/year", year=2020),
     "dnamtl":      dict(file="DNAmTL.csv",        kind="linear", tf=("lin", 0.0), cat="telomere length",  unit="kb",         year=2019),
     "epitoc1":     dict(file="EpiTOC1.csv",       kind="linear", tf=("lin", 0.0), cat="mitotic (EpiTOC)", unit="score",      year=2016),
+    # --- exposome / lifestyle methylation predictors (McCartney 2018, Reed) ---
+    #     methylation "scores", not aging clocks; no acceleration. sigmoid outputs
+    #     are relative scores in [0,1], identity outputs are raw predictor units.
+    "smoking":     dict(file="Smoking.csv",       kind="linear", tf=("lin", 0.0),     cat="exposome: smoking",     unit="score", year=2018),
+    "alcohol":     dict(file="Alcohol.csv",       kind="linear", tf=("lin", 0.0),     cat="exposome: alcohol",     unit="score", year=2018),
+    "bmi":         dict(file="BMI_McCartney.csv", kind="linear", tf=("sigmoid", 0.0), cat="exposome: BMI",         unit="score", year=2018),
+    "bmi_reed":    dict(file="BMI_Reed.csv",      kind="linear", tf=("lin", 0.0),     cat="exposome: BMI (Reed)",  unit="score", year=2020),
+    "bodyfat":     dict(file="BodyFatMcCartney.csv",         kind="linear", tf=("sigmoid", 0.0), cat="exposome: body fat",    unit="score", year=2018),
+    "hdl":         dict(file="HDLCholesterolMcCartney.csv",  kind="linear", tf=("sigmoid", 0.0), cat="exposome: HDL chol.",   unit="score", year=2018),
+    "ldl":         dict(file="LDLCholesterolMcCartney.csv",  kind="linear", tf=("sigmoid", 0.0), cat="exposome: LDL chol.",   unit="score", year=2018),
+    "totalchol":   dict(file="TotalCholesterolMcCartney.csv",kind="linear", tf=("sigmoid", 0.0), cat="exposome: total chol.", unit="score", year=2018),
+    "education":   dict(file="EducationMcCartney.csv",       kind="linear", tf=("sigmoid", 0.0), cat="exposome: education",   unit="score", year=2018),
+    # --- health / disease-risk methylation predictors ---
+    "cvd":         dict(file="CVD_Westermann.csv",  kind="linear", tf=("sigmoid", 0.0),   cat="health: coronary heart disease", unit="risk", year=2020),
+    "alzheimers":  dict(file="AD_Bahado-Singh.csv", kind="linear", tf=("sigmoid", 0.072), cat="health: Alzheimer's",            unit="risk", year=2022),
+    "depression":  dict(file="DepressionBarbu.csv", kind="linear", tf=("lin", 0.0),       cat="health: depression",             unit="risk", year=2020),
 }
 NEEDS_AGE_SEX = {k for k, v in CLOCKS.items() if v["kind"] == "grim"}
+EXPOSOME = ["smoking", "alcohol", "bmi", "bmi_reed", "bodyfat", "hdl", "ldl", "totalchol", "education"]
+HEALTH = ["cvd", "alzheimers", "depression"]
+AGING = [k for k in CLOCKS if k not in EXPOSOME + HEALTH]
 GROUPS = {
-    "all": list(CLOCKS),
+    "all": list(CLOCKS),                 # every model (aging + exposome + health)
+    "aging": AGING,                      # the 25 aging clocks only
     "grimage": ["grimagev1", "grimagev2"],
     "core": ["grimagev1", "grimagev2", "horvath", "hannum", "phenoage"],
     "firstgen": ["horvath", "horvath2", "hannum", "lin", "vidalbralo", "weidner", "garagnani", "bocklandt"],
     "secondgen": ["grimagev1", "grimagev2", "phenoage", "hrsinchphenoage", "yingcausage", "yingdamage", "yingadaptage"],
     "thirdgen": ["dunedinpace", "dunedinpoam"],
+    "exposome": EXPOSOME,
+    "health": HEALTH,
+    "phenotypes": EXPOSOME + HEALTH,     # all non-aging predictors
 }
 
 
@@ -227,7 +250,12 @@ def predict_linear(dnam, spec):
     mat = joined.iloc[:, 1:].to_numpy(dtype=float)
     raw = (mat * betas[:, None]).sum(axis=0)
     ttype, off = spec["tf"]
-    vals = anti_trafo(raw + off) if ttype == "anti" else (raw + off)
+    if ttype == "anti":
+        vals = anti_trafo(raw + off)
+    elif ttype == "sigmoid":
+        vals = 1.0 / (1.0 + np.exp(-(raw + off)))
+    else:  # "lin"
+        vals = raw + off
     return pd.Series(np.asarray(vals, dtype=float), index=joined.columns[1:])
 
 
