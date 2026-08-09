@@ -16,6 +16,11 @@ description: >-
   "exposome", "methylation risk score", or comparing several clocks on one sample.
   Designed for human WHOLE BLOOD samples (e.g. WeGene/EPIC/450K/MSA blood exports);
   missing CpGs are imputed by default with methyLImp using a whole-blood panel.
+homepage: https://github.com/gangchen/epiage-skill
+metadata:
+  openclaw:
+    requires:
+      bins: [python3]
 ---
 
 # Epigenetic Clock Calculator

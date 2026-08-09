@@ -8,6 +8,16 @@ clocks** from a CpG beta-value file — entirely offline, with only `pandas` +
 npx skills add gangchen/epiage-skill
 ```
 
+> ⚠️ **Research / educational use only — not a medical device.** This computes
+> DNA-methylation *research scores* (biological age, pace of aging, and relative
+> disease-risk / lifestyle scores). It does **not** diagnose, treat, or provide
+> medical advice, and its outputs are not clinical measurements. Do not make health
+> decisions from them; consult a qualified clinician.
+>
+> 🔒 **Private by design.** Everything runs **locally and offline** — your
+> methylation data never leaves your machine (no network calls at runtime, no
+> telemetry, no upload). Only `pandas` + `numpy` are used.
+
 ## At a glance
 
 - **37 methylation models** in one run — 25 aging clocks (GrimAge V1/V2, Horvath ×2,
