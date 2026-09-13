@@ -213,6 +213,27 @@ downloading. CpGs absent from an available panel can still use median fallback.
 Note: methyLImp mainly helps the heavily-imputed clocks; high-coverage
 clocks (GrimAge/Horvath/PhenoAge) move <0.2 yr either way.
 
+## EPICv2 SNP inference (experimental)
+
+We are exploring SNP inference from EPICv2 (935K) methylation arrays, following
+ideas from **[MethylGenotyper](https://github.com/Yi-Jiang/MethylGenotyper)**
+([method paper](https://doi.org/10.1093/gpbjnl/qzae044)). A local research
+prototype has implemented and trialed **partial EPICv2 support**:
+
+- Exploratory genotyping from dedicated SNP probes.
+- Candidate selection and exploratory signal-based genotyping from selected
+  Type I methylation probes.
+- Candidate and signal analysis for Type II methylation probes; full genotype
+  calling is not yet implemented.
+
+These prototypes are **not yet included in the skill's released/default
+workflow** and do not reproduce the complete MethylGenotyper pipeline or
+establish its reported accuracy. Full support, especially for Type II probes,
+still requires **training and validating EPICv2 reference models**, including
+per-probe methylation parameters and mixture-model inference. Future updates
+will develop this model-based genotyping and offline inference, with independent
+genotype validation before reporting accuracy.
+
 ## Why age & sex are required for GrimAge
 
 GrimAge is a **2nd-generation, mortality-trained** clock: it estimates DNAm
