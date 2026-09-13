@@ -29,10 +29,12 @@ npx skills add gangchen/epiage-skill
 
 ## At a glance
 
-- **37 methylation models** in one run — 25 aging clocks (GrimAge V1/V2, Horvath ×2,
+- **37 registered methylation models** — 25 aging clocks and related markers (GrimAge V1/V2, Horvath ×2,
   Hannum, PhenoAge, Ying causality clocks, DunedinPACE/PoAm, DNAmTL, …) plus 12
   exposome & health predictors (DNAm smoking, alcohol, BMI, body fat, cholesterol,
   education, and CHD / Alzheimer's / depression risk scores).
+  **35 currently support calculation.** CVD and depression return `unavailable`
+  while their original scoring procedures are reconstructed; see the model audit.
 - **For human whole blood** — give it a blood methylation export (WeGene / EPIC /
   450K / MSA), get clock results and per-clock coverage. Age + sex are required
   only for GrimAge; age also enables acceleration for clocks measured in years.
@@ -44,7 +46,9 @@ npx skills add gangchen/epiage-skill
 - **Self-contained beta-to-clock calculation** — only `pandas` + `numpy`. Coefficients, the
   DunedinPACE normalization reference, and a whole-blood methyLImp panel are all
   vendored (~6 MB). No biolearn / torch / scipy / network at runtime.
-- **Faithful** — reimplements biolearn's clocks, verified to match to <0.005.
+- **Documented model corrections** — implements biolearn-based calculations;
+  [coefficient and unit checks](epigenetic-clocks/references/model-audit.md)
+  record corrections against original sources.
 - **Smart imputation** — missing CpGs (common on the newer MSA chip) are filled by
   default with **methyLImp** (correlation-based, ~10% lower error than a median on
   a held-out blood benchmark), with a confidence flag on each fill.
@@ -57,38 +61,58 @@ Then just hand your agent a methylation file and ask for your biological age.
 > blood-based — designed for blood methylation exports (WeGene / EPIC / 450K /
 > MSA). Don't use it on other tissues.
 
-Computes **25 aging clocks** from a methylation beta-value CSV (e.g. an Illumina
+Computes **25 aging clocks and related markers** from a methylation beta-value CSV (e.g. an Illumina
 EPIC / 450K array export), including:
 
 - **GrimAge** V1 & V2 (2nd-gen, mortality-trained)
 - **1st-gen chronological**: Horvath (v1 & skin-blood), Hannum, Lin, Vidal-Bralo,
-  Weidner, Garagnani, Bocklandt
+  Weidner
 - **2nd-gen biological age**: PhenoAge, HRSInCH-PhenoAge
 - **Ying 2022 causality clocks**: CausAge, DamAge, AdaptAge
-- **Stochastic clocks**: StocH, StocP, StocZ
+- **Stochastic age clocks**: StocH, StocP, StocZ (years; StocZ uses Zhang's age-clock CpGs)
 - **Tissue-specific**: PEDBE (pediatric buccal), Cortical (brain)
 - **3rd-gen pace of aging**: DunedinPACE, DunedinPoAm
-- **Other markers**: DNAmTL (telomere length), Zhang (mortality), EpiTOC1 (mitotic)
+- **Other markers**: DNAmTL (telomere surrogate, kb), Zhang 10-CpG mortality
+  score, EpiTOC1 (mean methylation), Garagnani and Bocklandt (single-CpG beta
+  values, not calibrated ages)
 
-Plus **12 exposome & health predictors** (methylation *scores*, not aging clocks):
+Plus **12 registered exposome & health predictors** (methylation *scores*, not aging clocks):
 
 - **exposome / lifestyle** (McCartney 2018 / Reed): smoking, alcohol, BMI (×2), body
   fat, HDL / LDL / total cholesterol, education
 - **health / disease risk**: coronary heart disease, Alzheimer's, depression
 
+`cvd` and `depression` currently return a null value and `status=unavailable`
+because source-model checks found incomplete coefficients or incompatible input
+processing. Other requested models continue. `status_reason` in JSON explains
+why a result is unavailable; `ok` means calculation succeeded, not clinical validation.
+
 Run `--list-clocks` for the full list. Group aliases for `--clocks`: `all`, `aging`,
 `core` (default), `grimage`, `firstgen`, `secondgen`, `thirdgen`, `exposome`,
-`health`, `phenotypes`. These predictors are relative DNAm scores (many sigmoid-
-squashed to [0,1]) — **not** your actual BMI/cholesterol or a diagnosis.
+`health`, `phenotypes`. McCartney trait predictors return raw linear DNAm scores;
+they can be negative and are not bounded to [0,1]. These are **not** actual
+BMI/cholesterol, disease probabilities or diagnoses.
 
 - **Bundled clock data**: after installing `pandas` + `numpy`, clock calculation
   requires no `biolearn`, `torch`, `scipy`, or network. Coefficients, DunedinPACE's
   20k-probe normalization reference and the blood imputation panel are vendored
   under `epigenetic-clocks/data/` (~6 MB, in addition to the IDAT reference bundle).
-- **Faithful**: the math reimplements [biolearn](https://bio-learn.github.io/)'s
+- **Implementation**: the math implements [biolearn](https://bio-learn.github.io/)'s
   `GrimageModel`, `LinearMethylationModel`, and the DunedinPACE quantile
-  normalization (with a numpy-only `rankdata`), verified to reproduce biolearn's
-  outputs for all 25 clocks (agreement < 0.005, i.e. rounding only).
+  normalization (with a numpy-only `rankdata`). Agreement with another library
+  does not establish that its source coefficients or labels are correct; see
+  the [model audit](epigenetic-clocks/references/model-audit.md) for verified fixes.
+
+**Coefficient/unit correction:** older versions used the wrong sign for the
+DNAmTL intercept, making results **15.849560106 kb too low**. Recompute those
+results with this version. Garagnani and Bocklandt return beta values on [0,1],
+not years, and no longer produce age acceleration. StocZ remains an age in years;
+it must not be confused with the separate Zhang 10-CpG mortality score.
+Six McCartney predictors (`bmi`, `bodyfat`, `hdl`, `ldl`, `totalchol`, `education`)
+also no longer apply an unsupported sigmoid; recompute prior scores before
+comparing them with this version. Original trait units cannot be recovered by
+simply exponentiating the scores, because the training traits were transformed
+and adjusted for covariates.
 
 ## Install
 
@@ -257,7 +281,9 @@ year-unit clocks.
   mortality better — they can diverge from true age by design.
 - **Coverage matters.** Each clock reports CpG coverage; clocks heavily imputed on
   a sparse input (coverage < ~90%) are less reliable for that sample.
-- **Non-year clocks** (pace, telomere kb, mortality risk, mitotic) are not ages.
+- **Non-year outputs** (pace, telomere surrogate in kb, mortality score, mean
+  methylation and single-CpG beta values) are not ages. Their acceleration is
+  blank. DNAmTL is a methylation-derived surrogate, not a measured telomere length.
 - **Not medical advice.** Research/educational use only.
 
 > **DunedinPACE note:** its quantile normalization needs ~20k background CpGs (not
@@ -293,6 +319,8 @@ Rscript --vanilla tests/test_preprocess_idat.R
 
 The IDAT workflow has been exercised on an actual EPICv2 sample with network
 access restricted. Its betas matched those generated using the original
-reference cache. All 37 models retained their previous numerical results on
-complete synthetic input. Tests also cover sample-specific missingness,
+reference cache. Regression tests check DNAmTL and McCartney coefficients
+against original-source fixtures, output units and age acceleration, and safe
+handling of unavailable models. The model-audit corrections above intentionally
+change affected historical outputs. Tests also cover sample-specific missingness,
 DunedinPACE sample independence, IDAT pairing and missing-resource reporting.
