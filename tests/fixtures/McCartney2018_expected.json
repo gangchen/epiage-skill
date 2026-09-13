@@ -1,0 +1,74 @@
+{
+  "bmi": {
+    "sheet": "Table S1 - BMI",
+    "n_cpgs": 1109,
+    "beta": 0.5,
+    "expected_weighted_sum": -0.7326852944226759,
+    "coefficient_sum": -1.4653705888453519,
+    "intercept_in_source_table": false,
+    "prediction_definition": "raw sum(coefficient * beta), no intercept, no sigmoid"
+  },
+  "smoking": {
+    "sheet": "Table S2 - Smoking",
+    "n_cpgs": 233,
+    "beta": 0.5,
+    "expected_weighted_sum": 2.0069389860049385,
+    "coefficient_sum": 4.013877972009877,
+    "intercept_in_source_table": false,
+    "prediction_definition": "raw sum(coefficient * beta), no intercept, no sigmoid"
+  },
+  "alcohol": {
+    "sheet": "Table S3 - Alcohol",
+    "n_cpgs": 450,
+    "beta": 0.5,
+    "expected_weighted_sum": -5.559363739008644,
+    "coefficient_sum": -11.118727478017288,
+    "intercept_in_source_table": false,
+    "prediction_definition": "raw sum(coefficient * beta), no intercept, no sigmoid"
+  },
+  "education": {
+    "sheet": "Table S4 - Education",
+    "n_cpgs": 373,
+    "beta": 0.5,
+    "expected_weighted_sum": -2.468849174484526,
+    "coefficient_sum": -4.937698348969052,
+    "intercept_in_source_table": false,
+    "prediction_definition": "raw sum(coefficient * beta), no intercept, no sigmoid"
+  },
+  "totalchol": {
+    "sheet": "Table S5  - Total cholesterol",
+    "n_cpgs": 204,
+    "beta": 0.5,
+    "expected_weighted_sum": -1.060903192953824,
+    "coefficient_sum": -2.121806385907648,
+    "intercept_in_source_table": false,
+    "prediction_definition": "raw sum(coefficient * beta), no intercept, no sigmoid"
+  },
+  "hdl": {
+    "sheet": "Table S6 - HDL cholesterol",
+    "n_cpgs": 737,
+    "beta": 0.5,
+    "expected_weighted_sum": 2.5504501938871953,
+    "coefficient_sum": 5.100900387774391,
+    "intercept_in_source_table": false,
+    "prediction_definition": "raw sum(coefficient * beta), no intercept, no sigmoid"
+  },
+  "ldl": {
+    "sheet": "Table S7 - LDL cholesterol",
+    "n_cpgs": 233,
+    "beta": 0.5,
+    "expected_weighted_sum": -2.7555480414405915,
+    "coefficient_sum": -5.511096082881183,
+    "intercept_in_source_table": false,
+    "prediction_definition": "raw sum(coefficient * beta), no intercept, no sigmoid"
+  },
+  "bodyfat": {
+    "sheet": "Table S10 - % Body fat",
+    "n_cpgs": 968,
+    "beta": 0.5,
+    "expected_weighted_sum": -15.351931408326257,
+    "coefficient_sum": -30.703862816652514,
+    "intercept_in_source_table": false,
+    "prediction_definition": "raw sum(coefficient * beta), no intercept, no sigmoid"
+  }
+}

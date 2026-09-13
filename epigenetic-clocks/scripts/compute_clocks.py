@@ -4,8 +4,9 @@
 SELF-CONTAINED: depends only on pandas + numpy. Clock coefficients and the
 imputation reference are vendored under ../data/ (extracted from the open-source
 biolearn library, trimmed to the CpGs the clocks use). No biolearn / torch /
-seaborn / network needed at runtime. The math faithfully reimplements biolearn's
-GrimageModel and LinearMethylationModel and reproduces biolearn's outputs.
+seaborn / network needed at runtime. The math implements biolearn's GrimageModel
+and LinearMethylationModel, with source-checked coefficient and metadata
+corrections documented in references/model-audit.md.
 
 37 models across several families (see --list-clocks). GrimAge requires --age and
 --sex (it is age/sex adjusted). The other clocks don't, but passing --age lets the
@@ -37,15 +38,16 @@ CLOCKS = {
     "lin":        dict(file="Lin.csv",       kind="linear", tf=("lin", 0.0),               cat="1st-gen chronological", unit="years", year=2016),
     "vidalbralo": dict(file="VidalBralo.csv",kind="linear", tf=("lin", 84.7),              cat="1st-gen chronological", unit="years", year=2018),
     "weidner":    dict(file="Weidner.csv",   kind="linear", tf=("lin", 38.0),              cat="1st-gen chronological", unit="years", year=2014),
-    "garagnani":  dict(file="Garagnani.csv", kind="linear", tf=("lin", 0.0),               cat="1st-gen chronological", unit="years", year=2012),
-    "bocklandt":  dict(file="Bocklandt.csv", kind="linear", tf=("lin", 0.0),               cat="1st-gen chronological", unit="years", year=2011),
+    # These bundled identity models return one CpG beta, not a calibrated age.
+    "garagnani":  dict(file="Garagnani.csv", kind="linear", tf=("lin", 0.0),               cat="single-CpG marker (ELOVL2)", unit="beta", year=2012),
+    "bocklandt":  dict(file="Bocklandt.csv", kind="linear", tf=("lin", 0.0),               cat="single-CpG marker (EDARADD)", unit="beta", year=2011),
     # --- tissue-/age-specific ---
     "pedbe":      dict(file="PEDBE.csv",            kind="linear", tf=("anti", -2.1),                 cat="pediatric (buccal)", unit="years", year=2019),
     "cortical":   dict(file="DNAmClockCortical.csv",kind="linear", tf=("anti", 0.577682570446177),   cat="brain cortex", unit="years", year=2020),
     # --- stochastic clocks ---
     "stoch":      dict(file="StocH.csv", kind="linear", tf=("lin", 59.8015666314217), cat="stochastic (Horvath)",  unit="years", year=2024),
     "stocp":      dict(file="StocP.csv", kind="linear", tf=("lin", 92.8310813279039), cat="stochastic (PhenoAge)", unit="years", year=2024),
-    "stocz":      dict(file="StocZ.csv", kind="linear", tf=("lin", 64.8077188694894), cat="stochastic (mortality)", unit="years", year=2024),
+    "stocz":      dict(file="StocZ.csv", kind="linear", tf=("lin", 64.8077188694894), cat="stochastic (Zhang age)", unit="years", year=2024),
     # --- 2nd-gen biological-age ---
     "phenoage":        dict(file="PhenoAge.csv",        kind="linear", tf=("lin", 0.0), cat="2nd-gen biological age", unit="years", year=2018),
     "hrsinchphenoage": dict(file="HRSInCHPhenoAge.csv", kind="linear", tf=("lin", 0.0), cat="2nd-gen biological age", unit="years", year=2022),
@@ -54,27 +56,33 @@ CLOCKS = {
     "yingdamage":   dict(file="YingDamAge.csv",   kind="linear", tf=("lin", 0.0), cat="Ying damage",     unit="years", year=2022),
     "yingadaptage": dict(file="YingAdaptAge.csv", kind="linear", tf=("lin", 0.0), cat="Ying adaptation", unit="years", year=2022),
     # --- other aging-related (non-year units; no acceleration) ---
-    "zhang":       dict(file="Zhang_10.csv",      kind="linear", tf=("lin", 0.0), cat="mortality risk",   unit="risk",       year=2019),
+    "zhang":       dict(file="Zhang_10.csv",      kind="linear", tf=("lin", 0.0), cat="mortality risk score", unit="score",    year=2017),
     "dunedinpace": dict(file="DunedinPACE.csv",   kind="dunedin",                 cat="pace of aging (3rd-gen)", unit="years/year", year=2022),
     "dunedinpoam": dict(file="DunedinPoAm38.csv", kind="linear", tf=("lin", 0.0), cat="pace of aging",    unit="years/year", year=2020),
-    "dnamtl":      dict(file="DNAmTL.csv",        kind="linear", tf=("lin", 0.0), cat="telomere length",  unit="kb",         year=2019),
+    "dnamtl":      dict(file="DNAmTL.csv",        kind="linear", tf=("lin", 0.0), cat="DNAm telomere surrogate", unit="kb",    year=2019),
     "epitoc1":     dict(file="EpiTOC1.csv",       kind="linear", tf=("lin", 0.0), cat="mitotic (EpiTOC)", unit="score",      year=2016),
     # --- exposome / lifestyle methylation predictors (McCartney 2018, Reed) ---
-    #     methylation "scores", not aging clocks; no acceleration. sigmoid outputs
-    #     are relative scores in [0,1], identity outputs are raw predictor units.
+    #     Raw weighted DNAm scores, not physical trait measurements. The original
+    #     McCartney supplement does not specify a sigmoid or absolute calibration.
     "smoking":     dict(file="Smoking.csv",       kind="linear", tf=("lin", 0.0),     cat="exposome: smoking",     unit="score", year=2018),
     "alcohol":     dict(file="Alcohol.csv",       kind="linear", tf=("lin", 0.0),     cat="exposome: alcohol",     unit="score", year=2018),
-    "bmi":         dict(file="BMI_McCartney.csv", kind="linear", tf=("sigmoid", 0.0), cat="exposome: BMI",         unit="score", year=2018),
+    "bmi":         dict(file="BMI_McCartney.csv", kind="linear", tf=("lin", 0.0), cat="exposome: BMI score",     unit="score", year=2018),
     "bmi_reed":    dict(file="BMI_Reed.csv",      kind="linear", tf=("lin", 0.0),     cat="exposome: BMI (Reed)",  unit="score", year=2020),
-    "bodyfat":     dict(file="BodyFatMcCartney.csv",         kind="linear", tf=("sigmoid", 0.0), cat="exposome: body fat",    unit="score", year=2018),
-    "hdl":         dict(file="HDLCholesterolMcCartney.csv",  kind="linear", tf=("sigmoid", 0.0), cat="exposome: HDL chol.",   unit="score", year=2018),
-    "ldl":         dict(file="LDLCholesterolMcCartney.csv",  kind="linear", tf=("sigmoid", 0.0), cat="exposome: LDL chol.",   unit="score", year=2018),
-    "totalchol":   dict(file="TotalCholesterolMcCartney.csv",kind="linear", tf=("sigmoid", 0.0), cat="exposome: total chol.", unit="score", year=2018),
-    "education":   dict(file="EducationMcCartney.csv",       kind="linear", tf=("sigmoid", 0.0), cat="exposome: education",   unit="score", year=2018),
+    "bodyfat":     dict(file="BodyFatMcCartney.csv",         kind="linear", tf=("lin", 0.0), cat="exposome: body fat score", unit="score", year=2018),
+    "hdl":         dict(file="HDLCholesterolMcCartney.csv",  kind="linear", tf=("lin", 0.0), cat="exposome: HDL score",      unit="score", year=2018),
+    "ldl":         dict(file="LDLCholesterolMcCartney.csv",  kind="linear", tf=("lin", 0.0), cat="exposome: LDL score",      unit="score", year=2018),
+    "totalchol":   dict(file="TotalCholesterolMcCartney.csv",kind="linear", tf=("lin", 0.0), cat="exposome: total chol. score", unit="score", year=2018),
+    "education":   dict(file="EducationMcCartney.csv",       kind="linear", tf=("lin", 0.0), cat="exposome: education score", unit="score", year=2018),
     # --- health / disease-risk methylation predictors ---
-    "cvd":         dict(file="CVD_Westermann.csv",  kind="linear", tf=("sigmoid", 0.0),   cat="health: coronary heart disease", unit="risk", year=2020),
-    "alzheimers":  dict(file="AD_Bahado-Singh.csv", kind="linear", tf=("sigmoid", 0.072), cat="health: Alzheimer's",            unit="risk", year=2022),
-    "depression":  dict(file="DepressionBarbu.csv", kind="linear", tf=("lin", 0.0),       cat="health: depression",             unit="risk", year=2020),
+    "cvd":         dict(file="CVD_Westermann.csv",  kind="linear", tf=("sigmoid", 0.0),   cat="health: coronary heart disease", unit="score", year=2020),
+    "alzheimers":  dict(file="AD_Bahado-Singh.csv", kind="linear", tf=("sigmoid", 0.072), cat="health: Alzheimer's",            unit="score", year=2021),
+    "depression":  dict(file="DepressionBarbu.csv", kind="linear", tf=("lin", 0.0),       cat="health: depression",             unit="score", year=2020),
+}
+# Preserve these keys and historical files for provenance, but do not emit
+# scores from models whose source input scale or coefficient set is incomplete.
+MODEL_BLOCKERS = {
+    "cvd": "Source model incomplete: the bundled weights omit required terms and cohort score normalization.",
+    "depression": "Source model mismatch: M-value preprocessing and the intercept have not been verified.",
 }
 NEEDS_AGE_SEX = {k for k, v in CLOCKS.items() if v["kind"] == "grim"}
 EXPOSOME = ["smoking", "alcohol", "bmi", "bmi_reed", "bodyfat", "hdl", "ldl", "totalchol", "education"]
@@ -82,7 +90,7 @@ HEALTH = ["cvd", "alzheimers", "depression"]
 AGING = [k for k in CLOCKS if k not in EXPOSOME + HEALTH]
 GROUPS = {
     "all": list(CLOCKS),                 # every model (aging + exposome + health)
-    "aging": AGING,                      # the 25 aging clocks only
+    "aging": AGING,                      # the 25 aging clocks and related markers
     "grimage": ["grimagev1", "grimagev2"],
     "core": ["grimagev1", "grimagev2", "horvath", "hannum", "phenoage"],
     "firstgen": ["horvath", "horvath2", "hannum", "lin", "vidalbralo", "weidner", "garagnani", "bocklandt"],
@@ -283,6 +291,8 @@ def impute_missing(dnam, feats, ref):
 
 
 def predict_linear(dnam, spec):
+    if spec.get("file") in {CLOCKS[k]["file"] for k in MODEL_BLOCKERS}:
+        raise ValueError("This predictor is unavailable pending source-model reconstruction; see references/model-audit.md")
     coef = pd.read_csv(os.path.join(DATA, spec["file"]), index_col=0)
     ccol = "CoefficientTraining" if "CoefficientTraining" in coef.columns else coef.columns[0]
     m = dnam.copy()
@@ -330,6 +340,8 @@ def list_clocks():
     print("-" * 64)
     for k, v in CLOCKS.items():
         star = " *needs age+sex" if v["kind"] == "grim" else ""
+        if k in MODEL_BLOCKERS:
+            star += " [unavailable: source model under review]"
         print(f"{k:16s} {v['year']:<4d} {v['unit']:11s} {v['cat']}{star}")
     print("\nGroups for --clocks:", ", ".join(GROUPS))
 
@@ -385,6 +397,9 @@ def main():
         sys.exit(f"ERROR: {exc}")
     if args.check_resources:
         print(f"Local coefficient and imputation resources ready for {len(keys)} model(s).")
+        for k in keys:
+            if k in MODEL_BLOCKERS:
+                print(f"WARNING: {k} remains unavailable: {MODEL_BLOCKERS[k]}", file=sys.stderr)
         return
 
     sex_code = None
@@ -414,7 +429,15 @@ def main():
     rows = []
     for k in keys:
         spec = CLOCKS[k]
-        if spec["kind"] == "dunedin":
+        blocked_reason = MODEL_BLOCKERS.get(k, "")
+        if blocked_reason:
+            feats = model_cpgs(spec)
+            n_feat = len(feats)
+            missing_counts = dnam.reindex(feats).isna().sum(axis=0)
+            unresolved = missing_counts.copy()  # no imputation or inference was attempted
+            n_lowconf = {s: "" for s in samples}
+            vals = pd.Series(np.nan, index=samples)
+        elif spec["kind"] == "dunedin":
             # self-normalizing; coverage measured against the ~20k background probes
             vals, n_feat, missing_counts = predict_dunedin(dnam)
             unresolved = {s: 0 for s in samples}
@@ -432,22 +455,23 @@ def main():
             unresolved_n = int(unresolved[s])
             cov = (n_feat - missing_n) / n_feat * 100 if n_feat else 100.0
             available = np.isfinite(v) and not unresolved_n
+            status_reason = blocked_reason or ("Unresolved CpGs or nonfinite prediction." if not available else "")
             if not available:
                 v = np.nan
-                print(f"WARNING: {s}/{k} unavailable: {unresolved_n} required CpGs "
-                      "have no usable value/reference, or prediction is nonfinite.", file=sys.stderr)
+                print(f"WARNING: {s}/{k} unavailable: {status_reason}", file=sys.stderr)
             accel = (v - args.age) if (available and args.age is not None and spec["unit"] == "years") else None
             rows.append(dict(sample=s, clock=k, category=spec["cat"], unit=spec["unit"],
                              value=round(v, 2), accel=(np.nan if not available else
                                  "" if accel is None else round(accel, 2)),
                              coverage=f"{cov:.0f}%", n_feat=n_feat, n_missing=missing_n,
                              n_imputed=missing_n - unresolved_n, n_unresolved=unresolved_n,
-                             n_lowconf=n_lowconf[s], status="ok" if available else "unavailable"))
+                             n_lowconf=n_lowconf[s], status="ok" if available else "unavailable",
+                             status_reason=status_reason))
 
     res = pd.DataFrame(rows)
     print("=== Results ===")
     with pd.option_context("display.max_rows", None, "display.width", 200):
-        print(res.to_string(index=False))
+        print(res.drop(columns="status_reason").to_string(index=False))
 
     if args.sensitivity is not None and "grimagev2" in keys:
         spec = CLOCKS["grimagev2"]

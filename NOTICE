@@ -23,6 +23,22 @@ Original clock publications
   10.1186/gb-2013-14-10-r115)
 - Hannum clock: Hannum G, et al. Molecular Cell, 2013.
 - PhenoAge (Levine): Levine ME, et al. Aging (Albany NY), 2018. Article 101414.
+- DNAmTL: Lu AT, et al. "DNA methylation-based estimator of telomere length."
+  Aging (Albany NY), 2019. DOI: 10.18632/aging.102173. The positive intercept
+  +7.924780053 and all 140 CpG weights were checked against Supplementary Data 1,
+  worksheet DNAmLTL_addgene_addmQTL. The original-source CSV in tests/fixtures/
+  is a transcription of those numeric coefficients; see references/model-audit.md
+  within the skill for source URLs and the workbook SHA-256.
+- Bocklandt: Bocklandt S, et al. PLoS ONE, 2011. DOI: 10.1371/journal.pone.0014821.
+  The bundled one-CpG identity score does not implement the published age regression.
+- Garagnani: Garagnani P, et al. Aging Cell, 2012. DOI: 10.1111/acel.12005.
+  The bundled one-CpG score returns ELOVL2 beta, not a calibrated age.
+- Stochastic clocks: Tong H, et al. Nature Aging, 2024.
+  DOI: 10.1038/s43587-024-00600-8. StocZ predicts age, not mortality risk.
+- McCartney DL, et al. Genome Biology, 2018. DOI: 10.1186/s13059-018-1514-1.
+  Original Additional file 1 supplies the 4,307 trait-score weights transcribed
+  in tests/fixtures/McCartney2018_original.tsv. These are raw linear scores;
+  unsupported sigmoid transforms inherited from biolearn have been removed.
 
 GrimAge usage restriction
 -------------------------
