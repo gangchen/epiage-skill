@@ -7,7 +7,7 @@ biolearn library, trimmed to the CpGs the clocks use). No biolearn / torch /
 seaborn / network needed at runtime. The math faithfully reimplements biolearn's
 GrimageModel and LinearMethylationModel and reproduces biolearn's outputs.
 
-24 clocks across several families (see --list-clocks). GrimAge requires --age and
+37 models across several families (see --list-clocks). GrimAge requires --age and
 --sex (it is age/sex adjusted). The other clocks don't, but passing --age lets the
 tool report acceleration (= clock − chronological age) for the year-unit clocks.
 
@@ -18,7 +18,7 @@ Usage:
   python compute_clocks.py --input betas.csv --age 45 --sex m --clocks all
   python compute_clocks.py --list-clocks
 """
-import argparse, os, sys
+import argparse, csv, gzip, os, sys
 import pandas as pd, numpy as np
 
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
@@ -121,28 +121,23 @@ def _qnorm_to_target(data, target):
     return data
 
 
-def _hybrid_impute(dnam, src, required, threshold=0.8):
-    """biolearn hybrid_impute: drop sparse rows, fill missing required from src (gold means)."""
-    keep = dnam[dnam.notna().mean(axis=1) >= threshold]
-    keep = keep.where(keep.notna(), keep.mean(axis=1), axis=0)
-    miss = list(set(required) - set(keep.index))
-    add = pd.DataFrame.from_dict({c: [src[c]] * dnam.shape[1] for c in miss},
-                                 orient="index", columns=dnam.columns)
-    return pd.concat([keep, add]).sort_index()
-
-
 def predict_dunedin(dnam):
     """DunedinPACE: normalize sample to gold-standard distribution, then linear model.
-    Returns (values Series, n_background, n_background_missing)."""
+    Returns (values Series, n_background, per-sample missing counts).
+
+    Fill each sample's absent or masked background probes from the gold means,
+    as for a single-sample prediction. Never borrow another sample's betas or
+    discard an observed beta because other samples have that probe masked.
+    """
     gold = pd.read_csv(os.path.join(DATA, "DunedinPACE_Gold_Means.csv"), index_col=0)["mean"]
     coef = pd.read_csv(os.path.join(DATA, "DunedinPACE.csv"), index_col=0)["CoefficientTraining"]
-    present = dnam.index.intersection(gold.index)
-    n_bg = len(gold); n_miss = n_bg - len(present)
-    filled = _hybrid_impute(dnam.loc[present], gold, list(gold.index))
-    target = filled.index.map(gold.to_dict()).tolist()
+    observed = dnam.reindex(gold.index).sort_index()
+    n_bg = len(gold); n_miss = observed.isna().sum(axis=0)
+    filled = observed.where(observed.notna(), gold, axis=0)
+    target = gold.reindex(filled.index).to_numpy()
     norm = pd.DataFrame(_qnorm_to_target(filled.values, target), index=filled.index, columns=filled.columns)
-    mp = [c for c in coef.index if str(c).startswith("cg") and c in norm.index]
-    vals = norm.loc[mp].multiply(coef.loc[mp], axis=0).sum(axis=0) + coef["intercept"]
+    mp = [c for c in coef.index if str(c).startswith("cg")]
+    vals = norm.reindex(mp).multiply(coef.loc[mp], axis=0).sum(axis=0, skipna=False) + coef["intercept"]
     return vals, n_bg, n_miss
 
 
@@ -158,13 +153,58 @@ def model_cpgs(spec):
 
 
 def load_betas(path):
-    df = pd.read_csv(path)
+    """Read CpG-row CSV/TSV (optionally gzip); allow explicit missing betas.
+
+    SeSAMe masks are NA values, not zero. Invalid text and out-of-range or
+    infinite values are rejected rather than silently treated as masks.
+    Duplicate CpG rows must be resolved by the array preprocessing workflow.
+    """
+    opener = gzip.open if str(path).lower().endswith(".gz") else open
+    with opener(path, "rt", encoding="utf-8-sig", newline="") as handle:
+        first_line = handle.readline()
+    sep = "\t" if "\t" in first_line else ","
+    headers = next(csv.reader([first_line], delimiter=sep), [])
+    if len(headers) < 2:
+        raise ValueError(f"expected >=2 comma- or tab-delimited columns in {path}")
+    sample_headers = headers[1:]
+    if any(not name.strip() for name in sample_headers):
+        raise ValueError("sample column names must not be empty")
+    if len(set(sample_headers)) != len(sample_headers):
+        raise ValueError("duplicate sample column names; give every sample a unique name")
+    df = pd.read_csv(path, sep=sep, dtype={headers[0]: str})
     if df.shape[1] < 2:
-        sys.exit(f"ERROR: expected >=2 columns in {path}, got {df.shape[1]}")
-    df = df.rename(columns={df.columns[0]: "CpG"}).drop_duplicates("CpG").set_index("CpG")
-    if df.shape[1] == 1:
+        raise ValueError(f"expected >=2 columns in {path}, got {df.shape[1]}")
+    cpgs = df.iloc[:, 0].str.strip()
+    if cpgs.isna().any() or cpgs.eq("").any():
+        raise ValueError("CpG identifiers must not be empty")
+    if cpgs.str.match(r"^cg[0-9]+_").any():
+        raise ValueError("array probe suffixes detected; export SeSAMe betas with collapseToPfx=TRUE "
+                         "after masking before calculating clocks")
+    if not cpgs.str.match(r"^(cg[0-9]+$|ch\.)").any():
+        raise ValueError("no recognized Illumina methylation probe IDs (cg.../ch...) in the first column; "
+                         "this is not a supported array beta matrix")
+    if cpgs.duplicated().any():
+        duplicate = cpgs[cpgs.duplicated()].iloc[0]
+        raise ValueError(f"duplicate CpG identifier {duplicate!r}; collapse array probe replicates "
+                         "during preprocessing (e.g. SeSAMe EPICv2 probe collapse), then retry")
+    df = df.iloc[:, 1:].copy()
+    df.index = pd.Index(cpgs, name="CpG")
+    if df.shape[1] == 1 and df.columns[0] == "Beta_value":
         df.columns = ["Sample"]
-    return df.apply(pd.to_numeric, errors="coerce")
+    try:
+        numeric = df.apply(pd.to_numeric, errors="raise")
+    except (ValueError, TypeError) as exc:
+        raise ValueError("beta values must be numeric or explicit missing values (NA/blank)") from exc
+    values = numeric.to_numpy(dtype=float)
+    invalid = (~np.isnan(values)) & ((~np.isfinite(values)) | (values < 0) | (values > 1))
+    if invalid.any():
+        row, col = np.argwhere(invalid)[0]
+        raise ValueError(f"beta for {numeric.index[row]!r}, sample {numeric.columns[col]!r} "
+                         "must be finite and within [0, 1], or NA when masked")
+    empty_samples = numeric.columns[numeric.notna().sum(axis=0) == 0].tolist()
+    if empty_samples:
+        raise ValueError(f"no observed beta values for sample(s): {', '.join(empty_samples)}")
+    return numeric
 
 
 SD_THRESH = 0.08  # a CpG whose whole-blood SD exceeds this is intrinsically
@@ -221,23 +261,25 @@ class ImputeRef:
 
 
 def impute_missing(dnam, feats, ref):
-    """Fill missing clock CpGs (methyLImp by default, else median). Returns
-    (filled_df, missing_list, n_lowconf); n_lowconf = imputed CpGs whose blood SD
-    exceeds SD_THRESH (or is unknown) — fills to distrust."""
-    missing = list(dict.fromkeys(c for c in feats if c not in dnam.index))
-    if ref.sd is not None:
-        n_lowconf = sum(1 for c in missing
-                        if (c not in ref.sd.index) or pd.isna(ref.sd.get(c)) or ref.sd[c] > SD_THRESH)
-    else:
-        n_lowconf = 0
-    if not missing:
-        return dnam, missing, n_lowconf
-    add = pd.DataFrame(index=missing, columns=dnam.columns, dtype=float)
+    """Fill absent rows and sample-specific NA masks without changing observations.
+
+    Return (filled_df, missing_by_sample, n_lowconf_by_sample). Unresolvable
+    features remain NA so the caller can flag an unavailable sample/model;
+    silently dropping their coefficients would produce an incorrect score.
+    """
+    feats = list(dict.fromkeys(feats))
+    result = dnam.reindex(dnam.index.union(feats, sort=False)).copy()
+    missing, n_lowconf = {}, {}
     for s in dnam.columns:
-        filled = ref._methylimp(dnam[s].dropna(), missing) if ref.mode == "methylimp" else {}
-        add[s] = [filled.get(c, ref.median.get(c, np.nan)) for c in missing]
-    add = add.dropna(how="all")
-    return pd.concat([dnam, add]), missing, n_lowconf
+        missing[s] = [c for c in feats if pd.isna(result.at[c, s])]
+        filled = ref._methylimp(dnam[s].dropna(), missing[s]) if ref.mode == "methylimp" else {}
+        for c in missing[s]:
+            result.at[c, s] = filled.get(c, ref.median.get(c, np.nan))
+        n_lowconf[s] = sum(
+            1 for c in missing[s] if pd.notna(result.at[c, s]) and
+            (ref.sd is None or pd.isna(ref.sd.get(c)) or ref.sd[c] > SD_THRESH)
+        )
+    return result, missing, n_lowconf
 
 
 def predict_linear(dnam, spec):
@@ -245,9 +287,8 @@ def predict_linear(dnam, spec):
     ccol = "CoefficientTraining" if "CoefficientTraining" in coef.columns else coef.columns[0]
     m = dnam.copy()
     m.loc["intercept"] = 1.0
-    joined = coef.join(m, how="inner")
-    betas = joined[ccol].to_numpy(dtype=float)
-    mat = joined.iloc[:, 1:].to_numpy(dtype=float)
+    betas = coef[ccol].to_numpy(dtype=float)
+    mat = m.reindex(coef.index).to_numpy(dtype=float)
     raw = (mat * betas[:, None]).sum(axis=0)
     ttype, off = spec["tf"]
     if ttype == "anti":
@@ -256,7 +297,7 @@ def predict_linear(dnam, spec):
         vals = 1.0 / (1.0 + np.exp(-(raw + off)))
     else:  # "lin"
         vals = raw + off
-    return pd.Series(np.asarray(vals, dtype=float), index=joined.columns[1:])
+    return pd.Series(np.asarray(vals, dtype=float), index=dnam.columns)
 
 
 def predict_grim(dnam, spec, age, sex_code):
@@ -272,7 +313,7 @@ def predict_grim(dnam, spec, age, sex_code):
         elif name == "transform":
             transform = grp.set_index("var")["beta"]
         else:
-            cs = grp[grp["var"].isin(df.index)].set_index("var")["beta"]
+            cs = grp.set_index("var")["beta"]
             mat = df.reindex(cs.index).to_numpy(dtype=float)
             sub_vals[name] = pd.Series((mat * cs.to_numpy()[:, None]).sum(axis=0), index=df.columns)
     all_data = pd.DataFrame(sub_vals)
@@ -293,6 +334,21 @@ def list_clocks():
     print("\nGroups for --clocks:", ", ".join(GROUPS))
 
 
+def check_clock_resources(keys):
+    required = {CLOCKS[k]["file"] for k in keys}
+    required.add("sesame_450k_median.csv")
+    if any(CLOCKS[k]["kind"] != "dunedin" for k in keys):
+        required.add("blood_panel.npz")
+    if "dunedinpace" in keys:
+        required.add("DunedinPACE_Gold_Means.csv")
+    missing = [name for name in sorted(required)
+               if not os.path.isfile(os.path.join(DATA, name)) or os.path.getsize(os.path.join(DATA, name)) == 0]
+    if missing:
+        raise ValueError("missing local clock/imputation resources:\n  - " + "\n  - ".join(missing) +
+                         "\nAsk the user whether to download the missing resources, or import a complete "
+                         "offline skill bundle. No download was attempted.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input")
@@ -302,11 +358,13 @@ def main():
                     help="clock keys or groups (" + ", ".join(GROUPS) + "); default 'core'")
     ap.add_argument("--sensitivity", type=float, nargs="*")
     ap.add_argument("--list-clocks", action="store_true")
+    ap.add_argument("--check-resources", action="store_true",
+                    help="check local coefficients and imputation references without processing a sample")
     args = ap.parse_args()
 
     if args.list_clocks:
         list_clocks(); return
-    if not args.input:
+    if not args.input and not args.check_resources:
         sys.exit("ERROR: --input is required (or use --list-clocks).")
 
     # resolve requested clocks
@@ -321,13 +379,28 @@ def main():
             sys.exit(f"ERROR: unknown clock/group '{c}'. See --list-clocks.")
     seen = set(); keys = [k for k in keys if not (k in seen or seen.add(k))]
 
+    try:
+        check_clock_resources(keys)
+    except ValueError as exc:
+        sys.exit(f"ERROR: {exc}")
+    if args.check_resources:
+        print(f"Local coefficient and imputation resources ready for {len(keys)} model(s).")
+        return
+
     sex_code = None
     if any(k in NEEDS_AGE_SEX for k in keys):
         if args.age is None or args.sex is None:
             sys.exit("ERROR: GrimAge requires --age and --sex (or drop grimage from --clocks).")
         sex_code = 0 if args.sex in ("f", "female") else 1
 
-    dnam = load_betas(args.input)
+    try:
+        dnam = load_betas(args.input)
+    except (ValueError, OSError) as exc:
+        sys.exit(f"ERROR: {exc}")
+    if args.age is not None and (not np.isfinite(args.age) or args.age < 0):
+        sys.exit("ERROR: --age must be finite and nonnegative.")
+    if args.sensitivity and any(not np.isfinite(a) or a < 0 for a in args.sensitivity):
+        sys.exit("ERROR: --sensitivity ages must be finite and nonnegative.")
     ref = ImputeRef()
     samples = list(dnam.columns)
     print(f"Loaded {dnam.shape[0]} CpGs x {dnam.shape[1]} sample(s) from {args.input}")
@@ -343,22 +416,33 @@ def main():
         spec = CLOCKS[k]
         if spec["kind"] == "dunedin":
             # self-normalizing; coverage measured against the ~20k background probes
-            vals, n_feat, missing_n = predict_dunedin(dnam)
-            cov = (n_feat - missing_n) / n_feat * 100
-            feats = ["bg"] * n_feat; missing = ["m"] * missing_n
-            n_lowconf = ""
+            vals, n_feat, missing_counts = predict_dunedin(dnam)
+            unresolved = {s: 0 for s in samples}
+            n_lowconf = {s: "" for s in samples}
         else:
             feats = model_cpgs(spec)
             d2, missing, n_lowconf = impute_missing(dnam, feats, ref)
-            cov = (len(feats) - len(missing)) / len(feats) * 100 if feats else 100.0
+            n_feat = len(feats)
+            missing_counts = {s: len(missing[s]) for s in samples}
+            unresolved = d2.reindex(feats).isna().sum(axis=0)
             vals = predict_grim(d2, spec, args.age, sex_code) if spec["kind"] == "grim" else predict_linear(d2, spec)
         for s in samples:
             v = float(vals[s])
-            accel = (v - args.age) if (args.age is not None and spec["unit"] == "years") else None
+            missing_n = int(missing_counts[s])
+            unresolved_n = int(unresolved[s])
+            cov = (n_feat - missing_n) / n_feat * 100 if n_feat else 100.0
+            available = np.isfinite(v) and not unresolved_n
+            if not available:
+                v = np.nan
+                print(f"WARNING: {s}/{k} unavailable: {unresolved_n} required CpGs "
+                      "have no usable value/reference, or prediction is nonfinite.", file=sys.stderr)
+            accel = (v - args.age) if (available and args.age is not None and spec["unit"] == "years") else None
             rows.append(dict(sample=s, clock=k, category=spec["cat"], unit=spec["unit"],
-                             value=round(v, 2), accel=("" if accel is None else round(accel, 2)),
-                             coverage=f"{cov:.0f}%", n_feat=len(feats), n_imputed=len(missing),
-                             n_lowconf=n_lowconf))
+                             value=round(v, 2), accel=(np.nan if not available else
+                                 "" if accel is None else round(accel, 2)),
+                             coverage=f"{cov:.0f}%", n_feat=n_feat, n_missing=missing_n,
+                             n_imputed=missing_n - unresolved_n, n_unresolved=unresolved_n,
+                             n_lowconf=n_lowconf[s], status="ok" if available else "unavailable"))
 
     res = pd.DataFrame(rows)
     print("=== Results ===")

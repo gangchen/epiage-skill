@@ -1,0 +1,79 @@
+{
+  "sesame": "1.24.0",
+  "sesameData": "1.24.0",
+  "source": "https://bioconductor.org/packages/sesameData/",
+  "resources": [
+    {
+      "id": "experimenthub.sqlite3",
+      "title": "experimenthub.sqlite3",
+      "file": "de1539f3efea_experimenthub.sqlite3",
+      "bytes": 10175488,
+      "sha256": "6b9f775984747b5e30594920ebfdab23d61657598f7541d27128a86b55b2ac0c"
+    },
+    {
+      "id": "experimenthub.index.rds",
+      "title": "experimenthub.index.rds",
+      "file": "de153e0c095f_de153e0c095f_hub_index.rds",
+      "bytes": 314317,
+      "sha256": "01c21e420b7c828c42133549c88ebe9410357ad397ae953e483c7b5118e1256e"
+    },
+    {
+      "id": "EH8551",
+      "title": "MSA.address",
+      "file": "de1583b5bcc_8617",
+      "bytes": 5070777,
+      "sha256": "ed398053ceadd71c5bd65a60397fc1881d1816f9b7df03b20adb612c5b09d18a"
+    },
+    {
+      "id": "EH8552",
+      "title": "idatSignature",
+      "file": "de157107b24c_8618",
+      "bytes": 928,
+      "sha256": "73578ce17c439acc8e1443f9a6c55c3f02fdcc18cdff287b7b93f74cb86c835e"
+    },
+    {
+      "id": "EH8070",
+      "title": "KYCG.EPICv2.Mask.20230314",
+      "file": "dfd24aac5746_8120",
+      "bytes": 726849,
+      "sha256": "4f1ae45c2a26e620eb60a61fd2b92bc81910b8dc5aae304cb10a8fc492e31411"
+    },
+    {
+      "id": "EH8078",
+      "title": "EPICv2.address",
+      "file": "dfd27895daf6_8128",
+      "bytes": 15557275,
+      "sha256": "80ebc0fba655df9eb8d17b1043d06883d245bc60a7de23cd60b26e6e63ca57dc"
+    },
+    {
+      "id": "EH7323",
+      "title": "EPIC.address",
+      "file": "dfd2365a8a53_7373",
+      "bytes": 13793610,
+      "sha256": "612bb510b75a9096f549d9c50f9cc224ec860ab652f81658a76c869191d59b8d"
+    },
+    {
+      "id": "EH7317",
+      "title": "HM450.address",
+      "file": "dfd2722f6b05_7367",
+      "bytes": 8013256,
+      "sha256": "99300ba1d45aec5d5fdcdb12b61923f7313b1600c4ec9c8b9ca573d09bfc1655"
+    },
+    {
+      "id": "EH7318",
+      "title": "KYCG.EPIC.Mask.20220123",
+      "file": "dfd271b4fd4_7368",
+      "bytes": 2931781,
+      "sha256": "3e477d06b75b136f2f966b78b857675a2165fcc27c6a8660f97b36b4270825b6"
+    },
+    {
+      "id": "EH7319",
+      "title": "KYCG.HM450.Mask.20220123",
+      "file": "dfd21215eaf1_7369",
+      "bytes": 1873124,
+      "sha256": "b4eb0da4ef492655c2fe18b45fa65e969967c9f4a0c2149a5fae9241b510c7b2"
+    }
+  ],
+  "archive_bytes": 49559929,
+  "archive_sha256": "e3597612cb32d4c0a32efcf5e35ff686b4a2d62c0d4d9cd69799c565fb877f2c"
+}

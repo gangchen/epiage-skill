@@ -1,8 +1,14 @@
 # epiage-skill
 
 An installable agent skill for computing **epigenetic / DNA-methylation aging
-clocks** from a CpG beta-value file — entirely offline, with only `pandas` +
-`numpy`.
+clocks** from a CpG beta-value file or raw methylation-array **IDAT pairs**.
+Beta-to-clock calculation needs only `pandas` + `numpy`; IDAT preprocessing uses
+R/Bioconductor **SeSAMe**. The necessary public array references are bundled
+(47.3 MiB compressed). With compatible dependencies installed, the complete
+workflow runs offline:
+
+**Identify input and chip model → check local annotations → SeSAMe beta values
+and QC → imputation → epigenetic clocks.**
 
 ```bash
 npx skills add gangchen/epiage-skill
@@ -14,9 +20,12 @@ npx skills add gangchen/epiage-skill
 > medical advice, and its outputs are not clinical measurements. Do not make health
 > decisions from them; consult a qualified clinician.
 >
-> 🔒 **Private by design.** Everything runs **locally and offline** — your
-> methylation data never leaves your machine (no network calls at runtime, no
-> telemetry, no upload). Only `pandas` + `numpy` are used.
+> 🔒 **Private by design.** Sample processing runs locally; methylation data is
+> not uploaded. Installation and startup check local resources first. Missing
+> items are listed with their purpose and size (or an explicit unknown size),
+> then the agent asks whether downloading is allowed. Nothing is downloaded
+> without consent. On a machine without internet, install the missing software
+> from standard installation packages transferred from another machine.
 
 ## At a glance
 
@@ -25,9 +34,14 @@ npx skills add gangchen/epiage-skill
   exposome & health predictors (DNAm smoking, alcohol, BMI, body fat, cholesterol,
   education, and CHD / Alzheimer's / depression risk scores).
 - **For human whole blood** — give it a blood methylation export (WeGene / EPIC /
-  450K / MSA) plus age + sex, get every clock with acceleration and a per-clock
-  reliability flag.
-- **Self-contained & offline** — only `pandas` + `numpy`. Coefficients, the
+  450K / MSA), get clock results and per-clock coverage. Age + sex are required
+  only for GrimAge; age also enables acceleration for clocks measured in years.
+- **IDAT support** — paired `.idat`/`.idat.gz`, recursive directories and sample
+  sheets; validates IDAT input, identifies HM450, EPIC, EPICv2 or MSA from array
+  address signatures, then runs SeSAMe QCDPB, QC and masked beta export with
+  replicate-probe collapse. The bundled SeSAMe 1.24.0 references include no
+  recommended MSA design mask, so MSA results explicitly flag that QC limitation.
+- **Self-contained beta-to-clock calculation** — only `pandas` + `numpy`. Coefficients, the
   DunedinPACE normalization reference, and a whole-blood methyLImp panel are all
   vendored (~6 MB). No biolearn / torch / scipy / network at runtime.
 - **Faithful** — reimplements biolearn's clocks, verified to match to <0.005.
@@ -67,9 +81,10 @@ Run `--list-clocks` for the full list. Group aliases for `--clocks`: `all`, `agi
 `health`, `phenotypes`. These predictors are relative DNAm scores (many sigmoid-
 squashed to [0,1]) — **not** your actual BMI/cholesterol or a diagnosis.
 
-- **Self-contained**: only `pandas` + `numpy`. No `biolearn`, `torch`, `scipy`, or
-  network. Coefficients + references are vendored under `epigenetic-clocks/data/`
-  (~1 MB; includes DunedinPACE's 20k-probe normalization reference).
+- **Bundled clock data**: after installing `pandas` + `numpy`, clock calculation
+  requires no `biolearn`, `torch`, `scipy`, or network. Coefficients, DunedinPACE's
+  20k-probe normalization reference and the blood imputation panel are vendored
+  under `epigenetic-clocks/data/` (~6 MB, in addition to the IDAT reference bundle).
 - **Faithful**: the math reimplements [biolearn](https://bio-learn.github.io/)'s
   `GrimageModel`, `LinearMethylationModel`, and the DunedinPACE quantile
   normalization (with a numpy-only `rankdata`), verified to reproduce biolearn's
@@ -95,7 +110,50 @@ python3 epigenetic-clocks/scripts/compute_clocks.py --list-clocks
 
 ## Input format
 
-A CSV, auto-detected as one of:
+### Raw IDAT (SeSAMe)
+
+The bundled references match `sesame` **1.24.0** + `sesameData` **1.24.0**, tested
+with R **4.4.3**. R, Python and their dependencies are installed separately;
+the skill does not package their environments. Follow the
+[IDAT/offline setup guide](epigenetic-clocks/references/idat-sesame.md) if anything
+is missing, and ask before downloading and installing it. With dependencies ready:
+
+```bash
+Rscript epigenetic-clocks/scripts/preprocess_idat.R --check-deps
+python3 epigenetic-clocks/scripts/compute_clocks.py --check-resources --clocks all
+
+# Identify the actual array before processing; no network is used.
+Rscript epigenetic-clocks/scripts/preprocess_idat.R \
+  --input /path/to/idats --inspect
+
+Rscript epigenetic-clocks/scripts/preprocess_idat.R \
+  --input /path/to/idats --output-dir idat-output
+
+# Review idat-output/qc.csv before interpreting clocks.
+# For a single person with known age and sex:
+python3 epigenetic-clocks/scripts/compute_clocks.py \
+  --input idat-output/betas.csv --age 45 --sex m --clocks all
+```
+
+The preprocessor also accepts a single IDAT prefix/channel or `--sample-sheet`
+with `sample_id,idat_prefix`. Outputs include `input_inspection.csv`, `betas.csv`,
+`qc.csv`, sample/file checksums and software versions. Review QC before
+imputation and clock interpretation; imputation does not repair a failed sample.
+Existing output directories are never replaced. The age/sex arguments apply to
+all samples in a matrix: use separate sample runs when people have different
+metadata. IDAT preprocessing itself needs neither. Keep IDATs, sample metadata
+and results outside Git.
+
+The default run extracts the bundled references to a temporary local cache.
+Other SeSAMe versions need a matching cache supplied with `--cache`; preparing
+it online requires prior download consent. At startup, check R, Python, their
+packages and required system libraries. If the machine cannot connect, the user
+can transfer compatible standard installers/packages and the missing reference
+files from another machine.
+
+### Beta files
+
+A CSV/TSV (optionally `.gz`), auto-detected as one of:
 
 - **Long**: two columns — CpG id, then beta value (header names ignored).
   ```
@@ -105,7 +163,15 @@ A CSV, auto-detected as one of:
   ```
 - **Matrix**: first column = CpG id, remaining columns = one or more samples.
 
-Beta values are floats in `[0, 1]`.
+Beta values are floats in `[0, 1]`; masked values remain `NA` or blank. Named
+sample columns are preserved (`Beta_value` remains the legacy `Sample` label).
+Duplicate CpG rows are rejected; collapse array replicates during preprocessing.
+Coverage and imputation counts are per sample, including masked values. Models
+whose missing features cannot be filled return `status=unavailable` with a null
+JSON value, while other models continue.
+An existing beta file can establish that it contains methylation measurements,
+but CpG counts alone cannot prove a specific chip model. Record the platform as
+unknown unless an array manifest, export metadata or the original IDATs support it.
 
 ### Where to get the raw data
 
@@ -115,8 +181,8 @@ download your raw beta values as a CpG-vs-beta CSV — exactly the **Long** form
 above (`CpG_site,Beta_value`). Export it from your WeGene account and pass it
 straight to `--input`.
 
-Any platform that outputs Illumina EPIC/450K beta values works too (e.g. an
-`idat`-derived matrix processed with `minfi`/`sesame`). Note that coverage varies
+Existing Illumina EPIC/450K beta values work too; raw IDATs can now be processed
+with the included SeSAMe script. Note that coverage varies
 by source: clocks needing many probes — especially `dunedinpace` (~20k background
 CpGs) — are only reliable on a fairly complete export; the tool reports per-clock
 coverage so you can tell.
@@ -138,8 +204,13 @@ it cuts imputation RMSE ~10% vs a flat median. To rebuild/customize:
 python3 epigenetic-clocks/scripts/build_blood_panel.py   # GSE40279, 656 blood samples
 ```
 
-If the panel is ever missing the tool falls back to global-median and prints the
-active mode. Note: methyLImp mainly helps the heavily-imputed clocks; high-coverage
+Rebuilding downloads the public source dataset and is optional; ask for download
+consent first. Normal calculation uses the bundled panel without downloading it.
+
+If the panel or another required reference file is missing, the CLI lists all
+missing files and stops. Restore them before calculation; the agent asks before
+downloading. CpGs absent from an available panel can still use median fallback.
+Note: methyLImp mainly helps the heavily-imputed clocks; high-coverage
 clocks (GrimAge/Horvath/PhenoAge) move <0.2 yr either way.
 
 ## Why age & sex are required for GrimAge
@@ -176,15 +247,31 @@ year-unit clocks.
 ## Deliberately not included
 
 PC-clocks / `AltumAge` / `GPAge` (need PCA rotation or neural nets), gestational
-clocks (cord blood / newborns), and trait/disease predictors (BMI, cholesterol,
-smoking, Alzheimer's, …) — the last are biomarker models, not aging clocks. These
-require the full biolearn install.
+clocks (cord blood / newborns). These require additional implementations or the
+full biolearn install.
 
 ## Provenance & license
 
 - Skill code: MIT (see [LICENSE](LICENSE)).
 - Clock coefficients and the methylation reference are derived from **biolearn**
   (MIT). See [NOTICE](NOTICE) for full attribution and the original clock papers.
+- Bundled array references come from **sesameData 1.24.0 / ExperimentHub**
+  (sesameData: Artistic-2.0). The [resource inventory](epigenetic-clocks/data/sesame-resources.json)
+  records accessions, sizes and SHA-256 hashes; see [NOTICE](NOTICE) and the
+  [included license](epigenetic-clocks/data/SESAME_DATA_LICENSE.txt).
 - **GrimAge** has commercial-use restrictions (UCLA TDG / the Clock Foundation) for
   cosmetics and life-insurance applications. This repo is a free
   research/educational tool; for commercial licensing contact the Clock Foundation.
+
+## Validation
+
+```bash
+python3 -m unittest discover -s tests -v
+Rscript --vanilla tests/test_preprocess_idat.R
+```
+
+The IDAT workflow has been exercised on an actual EPICv2 sample with network
+access restricted. Its betas matched those generated using the original
+reference cache. All 37 models retained their previous numerical results on
+complete synthetic input. Tests also cover sample-specific missingness,
+DunedinPACE sample independence, IDAT pairing and missing-resource reporting.

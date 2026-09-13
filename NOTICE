@@ -2,7 +2,7 @@ NOTICE — third-party attribution
 =================================
 
 The clock coefficient files and the methylation reference distributed under
-grimage-calculator/data/ are derived from the open-source biolearn library and
+epigenetic-clocks/data/ are derived from the open-source biolearn library and
 the original clock publications. They are redistributed here for research and
 educational use.
 
@@ -31,6 +31,26 @@ via the Clock Foundation (https://clockfoundation.org/). For cosmetics or
 life-insurance applications, or any other commercial usage, contact the Clock
 Foundation regarding licensing. This repository provides a free
 research/educational reimplementation only.
+
+SeSAMe preprocessing and bundled array references
+------------------------------------------------
+- SeSAMe: Wanding Zhou and contributors; https://github.com/zwdzwd/sesame
+  Package license: MIT (2024, Wanding Zhou). The IDAT workflow calls the installed
+  SeSAMe package; it does not vendor its implementation.
+- sesameData 1.24.0: Wanding Zhou and contributors;
+  https://bioconductor.org/packages/sesameData/ ; package license: Artistic-2.0.
+  A copy is included at epigenetic-clocks/data/SESAME_DATA_LICENSE.txt.
+- epigenetic-clocks/data/sesame-reference-cache.tar.gz contains a selected,
+  unmodified set of public sesameData/ExperimentHub annotation objects and the
+  public Hub metadata needed for offline lookup. Only the cache registry is
+  trimmed and its file paths made relative for relocation. It is a subset of
+  sesameData resources, not a distribution of the full sesameData package.
+- Resource titles, ExperimentHub accessions, sizes, package versions and SHA-256
+  hashes are recorded in epigenetic-clocks/data/sesame-resources.json. Original
+  resource files remain byte-for-byte as cached from ExperimentHub.
+- SeSAMe paper: Zhou W, Triche TJ Jr, Laird PW, Shen H. "SeSAMe: reducing
+  artifactual detection of DNA methylation by Infinium BeadChips in genomic
+  deletions." Nucleic Acids Research, 2018. DOI: 10.1093/nar/gky691.
 
 Disclaimer
 ----------

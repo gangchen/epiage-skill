@@ -1,23 +1,16 @@
 ---
 name: epigenetic-clocks
 description: >-
-  Compute 37 DNA-methylation health models from a blood methylation file — 25 aging
-  clocks (GrimAge V1/V2, Horvath ×2, Hannum, PhenoAge, Ying causality clocks,
-  DunedinPACE/PoAm pace of aging, DNAmTL telomere length, …) PLUS 12 exposome &
-  health predictors (DNAm smoking, alcohol, BMI, body fat, cholesterol, education,
-  and coronary-heart-disease / Alzheimer's / depression risk). Use whenever the
-  user provides methylation array data (a CSV/TSV of CpG beta values, e.g. an
-  Illumina EPIC/450K/MSA export) and wants their biological age, epigenetic age,
-  GrimAge, DNAm age, age acceleration, pace of aging, an epigenetic smoking/BMI/
-  lifestyle score, a methylation disease-risk score, "甲基化年龄", "生物年龄",
-  "表观遗传时钟", "衰老时钟", "暴露组", or how old their DNA "looks" — even if they
-  just drop a methylation file and ask "how old am I biologically". Also triggers on
-  "GrimAge", "Horvath clock", "PhenoAge", "DunedinPACE/PoAm", "epigenetic clock",
-  "exposome", "methylation risk score", or comparing several clocks on one sample.
-  Designed for human WHOLE BLOOD samples (e.g. WeGene/EPIC/450K/MSA blood exports);
-  missing CpGs are imputed by default with methyLImp using a whole-blood panel.
-homepage: https://github.com/gangchen/epiage-skill
+  Process human whole-blood methylation array IDAT pairs with SeSAMe (sesame),
+  including QC and beta export for 450K, EPIC, EPICv2 and MSA when supported by
+  the installed package/data. Compute 25 epigenetic aging clocks and 12 exposome
+  or health scores from IDAT-derived or existing CSV/TSV beta matrices. Use for
+  IDAT preprocessing, biological age, GrimAge, Horvath, PhenoAge, DunedinPACE,
+  age acceleration, methylation lifestyle scores, 甲基化芯片、甲基化年龄、
+  生物年龄、表观遗传时钟 or 暴露组. Missing clock CpGs use a whole-blood
+  imputation panel; interpretation is restricted to human whole blood.
 metadata:
+  homepage: https://github.com/gangchen/epiage-skill
   openclaw:
     requires:
       bins: [python3]
@@ -25,17 +18,34 @@ metadata:
 
 # Epigenetic Clock Calculator
 
-Computes DNA-methylation aging clocks from a beta-value file. **25 clocks** are
-available; GrimAge is the headline one.
+Processes raw IDAT pairs with SeSAMe and computes DNA-methylation aging clocks
+from the resulting beta matrix or an existing beta-value file. **25 clocks** and
+**12 exposome/health predictors** are available; GrimAge is the headline clock.
 
-**Self-contained.** Needs only `pandas` + `numpy` — no biolearn, torch, seaborn,
-scipy, or network. Clock coefficients and references are vendored under `data/`
-(extracted from the open-source biolearn library, trimmed to the CpGs the clocks
-use, ~1 MB total). `scripts/compute_clocks.py` faithfully reimplements biolearn's
+**Beta-to-clock data is bundled.** Once `pandas` + `numpy` are installed, calculation
+needs no biolearn, torch, seaborn, scipy, or network. Clock coefficients,
+normalization references and the blood imputation panel are vendored under
+`data/` (~6 MB total). `scripts/compute_clocks.py` faithfully reimplements biolearn's
 `GrimageModel`, `LinearMethylationModel`, and the DunedinPACE quantile-
 normalization (with a numpy-only `rankdata`), reproducing biolearn's outputs for
 all 37 models — 25 aging clocks + 12 exposome/health predictors — verified bit-exact
-against biolearn.
+against biolearn on complete beta input. Masked matrix values are handled per
+sample; DunedinPACE uses each sample's observed background plus gold means.
+
+**The complete IDAT-to-clock workflow can run offline.** IDAT preprocessing
+requires R plus `sesame` and `sesameData`. Public IDAT references are bundled
+(47.3 MiB compressed), matched to `sesame` 1.24.0 / `sesameData` 1.24.0 and tested
+with R 4.4.3. R/Python environments are not packaged: install software separately
+when needed. At installation and startup, check R, Python, their packages and
+required system libraries; list every detected
+missing or incompatible item, its purpose, version and size (unknown if not yet
+known), then ask whether the user permits downloading and installing. Do not install packages,
+initialize an online cache, or rebuild references without that consent. If the
+machine has no internet, ask the user to transfer compatible standard
+installers/packages or missing reference files from another machine.
+Sample data stays local and must not enter Git. For IDAT input or offline setup,
+read [references/idat-sesame.md](references/idat-sesame.md) and use
+`scripts/preprocess_idat.R`. Existing beta files bypass IDAT preprocessing.
 
 ## The models (run `--list-clocks` for the live list)
 
@@ -80,22 +90,48 @@ clocks don't need them, but passing `--age` lets the tool report acceleration.
 
 ## Workflow
 
-### 1. Inspect the input file
+### 1. Identify and inspect the input
+For IDATs (a directory, a prefix, paired `_Grn.idat` / `_Red.idat`, optionally
+gzip, or a sample sheet), follow [the SeSAMe workflow](references/idat-sesame.md).
+After checking local dependencies, use `--inspect` to validate IDAT input and
+identify the human methylation array from its address signature; do not infer a
+platform from filenames or probe count, or force an unsupported array manifest.
+Then check the matching local annotation and run SeSAMe QCDPB to produce beta
+values and QC. Inspect `qc.csv` before imputation or clocks. Preserve masks as
+`NA`; do not replace them with zero or remove a locus from every sample because
+it failed in one sample. High sample missingness requires review. MSA has no
+recommended design mask in the bundled 1.24.0 resources: retain and report
+`design_mask_available=FALSE`; never claim design-mask QC was completed.
+Preprocessing alone does not need age or sex.
+
+For existing beta files, do not rerun IDAT preprocessing.
 Auto-detected layouts: **Long** (two columns: CpG id + beta) or **Matrix** (first
-column CpG id, remaining columns = samples). Betas are floats in [0,1]. Note the
-row count; coverage of each clock's CpGs is reported per clock.
+column CpG id, remaining columns = samples); CSV/TSV and gzip are supported.
+Betas are floats in [0,1] or explicit `NA`/blank. Duplicate CpG IDs are rejected:
+resolve array probe replicates in SeSAMe before calculating clocks. Coverage is
+the count of observed, unmasked features for each sample and clock.
+For beta-only data, retain the platform as unknown unless provenance establishes
+it; CpG count cannot prove a chip model.
 
-### 2. Get age and sex
-Required for GrimAge. If only an age range is known, use the midpoint and run
+### 2. Get age and sex when calculating GrimAge
+These are required only for GrimAge. If only an age range is known, use the midpoint and run
 `--sensitivity` so the user sees how much the answer depends on the exact age.
+The CLI's age and sex apply to every column in a matrix. For multiple people
+with different metadata, run separate sample matrices with each person's known
+age/sex; the IDAT sample sheet does not supply these values to the clock script.
 
-### 3. Check dependencies (only pandas + numpy)
+### 3. Check local clock dependencies and references
 ```bash
-python3 -c "import pandas, numpy" 2>/dev/null && echo OK || pip install pandas numpy
+python3 -c "import pandas, numpy; print('Python dependencies available')"
+python3 <skill-dir>/scripts/compute_clocks.py --check-resources --clocks all
 ```
-No venv, biolearn, torch, or network needed.
+`--check-resources` lists all missing files required by the selected clocks,
+including `blood_panel.npz` for methyLImp, and exits without computing scores.
+Report missing resources and ask about downloading or transferring them as
+above. Restore missing files before calculation. A complete local setup needs
+no network.
 
-### 4. Run
+### 4. Impute and compute clocks
 ```bash
 python3 <skill-dir>/scripts/compute_clocks.py \
   --input "<betas.csv>" --age <years> --sex <m|f> \
@@ -103,10 +139,14 @@ python3 <skill-dir>/scripts/compute_clocks.py \
   # --sensitivity 40 42 47 49  # optional, when exact age is uncertain
 python3 <skill-dir>/scripts/compute_clocks.py --list-clocks   # see all keys
 ```
-The script imputes any missing clock CpGs from the bundled (trimmed)
-`data/sesame_450k_median.csv` population reference, runs each model, and prints a
+The script imputes absent and sample-specific masked clock CpGs with the bundled
+whole-blood panel (with median fallback for CpGs the panel lacks), runs each model, and prints a
 table of value, acceleration (for year-unit clocks), and coverage, plus a JSON
 line for downstream use.
+`n_missing` counts masked/absent required features, `n_imputed` counts successful
+fills, and `n_unresolved` counts missing features without a usable reference.
+An unresolved model gets `status=unavailable` and a null JSON value; other models
+continue. Do not interpret an unavailable score or call an imputed value measured.
 
 ### 5. Report and interpret
 Lead with GrimAge, then the comparison. Always convey these caveats:
@@ -149,8 +189,10 @@ Lead with GrimAge, then the comparison. Always convey these caveats:
     from GSE40279 = 656 whole-blood 450K samples, reduced to the clock CpGs + 50
     blood PCs + per-CpG median/SD). So methyLImp is active out of the box — it
     cuts imputation RMSE ~10% vs a flat median on a held-out-CpG benchmark. To
-    rebuild/customize, run `scripts/build_blood_panel.py`. If the
-    file is ever missing the tool degrades gracefully to global-median and says so.
+    rebuild/customize, run `scripts/build_blood_panel.py` only after permission
+    to download its public source dataset. If the panel is missing, report the
+    missing resource and ask about downloading/transferring it before proceeding.
+    The CLI requires the panel and does not silently switch to global median.
   - Reality check: methyLImp mainly improves the *heavily-imputed* clocks. High-
     coverage clocks (GrimAge/Horvath/PhenoAge) impute few CpGs, so their values
     move <0.2 yr regardless — the confidence flag is the bigger practical win.
@@ -162,8 +204,6 @@ Lead with GrimAge, then the comparison. Always convey these caveats:
   machinery, or aren't aging clocks):
   - PC-clocks (`PCHorvath`…), `AltumAge`, `GPAge` — need PCA rotation / neural nets.
   - Gestational clocks (Knight, Lee, Mayne, Bohlin) — for cord blood / newborns.
-  - Trait & disease predictors (BMI, cholesterol, smoking, alcohol, Alzheimer's,
-    CVD, …) — these are biomarker models, not aging clocks.
   If a user specifically needs one of these, tell them it requires the full
   biolearn install.
 - **Provenance.** Coefficients are biolearn's (MIT), which reimplements the

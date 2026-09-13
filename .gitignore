@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+.Rhistory
+.RData
+.local/
+# Raw methylation data and generated preprocessing outputs stay local.
+*.idat
+*.idat.gz
+idat-output*/
